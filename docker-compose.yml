@@ -2,7 +2,6 @@ services:
   api:
     build:
       context: ./api/
-      dockerfile: Dockerfile
     container_name: api_express_MediCitas
     environment:
 
@@ -15,8 +14,6 @@ services:
       #Esto es para la prueba de integracion
       KEYCLOAK_TEST_CLIENT_ID: ${KEYCLOAK_TEST_CLIENT_ID}
       KEYCLOAK_TEST_PASSWORD: ${KEYCLOAK_TEST_PASSWORD}
-
-      FRONTEND_ORIGIN: ${BASE_URI}:${REACT_PORT}
 
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -81,7 +78,7 @@ services:
       KC_HTTP_MANAGEMENT_PORT: ${KEYCLOAK_MANAGEMENT_PORT}
       REALM_NAME: ${REALM_NAME}
       CLIENT_ID: ${CLIENT_ID}
-      BASE_URL: ${BASE_URI}:${REACT_PORT}
+      BASE_URL: ${BASE_URI}:${API_PORT}
 
       #Pruebas de integracion
       KEYCLOAK_TEST_CLIENT_ID: ${KEYCLOAK_TEST_CLIENT_ID}
