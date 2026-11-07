@@ -1,0 +1,37 @@
+{
+  "name": "@medicitas/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Capa de datos compartida de MediCitas: pools, transacciones con contexto de tenant y traducción de errores de PostgreSQL.",
+  "license": "MIT",
+  "author": "Erik, Johana, Neithan",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
