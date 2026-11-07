@@ -1,0 +1,21 @@
+{
+  "name": "medicitas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MediCitas: multi-tenant medical appointment platform built as microservices.",
+  "license": "MIT",
+  "author": "Erik, Johana, Neithan",
+  "workspaces": [
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "build:packages": "npm run build -w packages --if-present",
+    "build": "npm run build:packages && npm run build -w services --if-present",
+    "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
+    "test": "npm run build:packages && npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "@medicitas/edge-gateway",
+  "version": "1.0.0",
+  "description": "MediCitas edge gateway: single entry point that validates tokens and routes to the services.",
+  "repository": {
+    "type": "git",
+    "url": "../.."
+  },
+  "license": "MIT",
+  "author": "Erik, Johana, Neithan",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env --watch server.ts",
+    "build": "tsc",
+    "start": "node --env-file-if-exists=../../.env dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "pretest": "node scripts/clean-dist.mjs && npm run build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@medicitas/auth": "*",
+    "@medicitas/http": "*",
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
