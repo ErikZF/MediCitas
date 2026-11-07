@@ -1,0 +1,27 @@
+{
+  "name": "@medicitas/clinics-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MediCitas clinics-service: Clinics, specialties and the service catalog (RF1, RF3). Owns clinics_db.",
+  "license": "MIT",
+  "author": "Erik, Johana, Neithan",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env --watch server.ts",
+    "build": "tsc",
+    "start": "node --env-file-if-exists=../../.env dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@medicitas/http": "*",
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
