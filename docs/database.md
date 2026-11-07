@@ -1,14 +1,14 @@
-# Arquitectura de Bases de Datos (Microservicios)
+# Database Architecture (Microservices)
 
-En MediCitas la persistencia se divide en 4 bases de datos relacionales independientes (PostgreSQL 17), preparadas para la transición a una arquitectura de microservicios con el patrón **Database-per-Service**.
+In MediCitas, persistence is partitioned across 4 independent relational databases (PostgreSQL 17), designed for a microservices architecture implementing the **Database-per-Service** pattern.
 
 ---
 
-## 1. Distribución de Dominios y Tablas
+## 1. Domain and Table Distribution
 
 ```mermaid
 flowchart TD
-    subgraph ClinicsService["Clinics DB (Puerto 5436)"]
+    subgraph ClinicsService["Clinics DB (Port 5436)"]
         clinic[clinic]
         specialty[specialty]
         service[service]
@@ -16,7 +16,7 @@ flowchart TD
         specialty --> service
     end
 
-    subgraph UsersService["Users DB (Puerto 5434)"]
+    subgraph UsersService["Users DB (Port 5434)"]
         role[role]
         app_user[app_user]
         professional[professional]
@@ -27,7 +27,7 @@ flowchart TD
         professional --> prof_spec
     end
 
-    subgraph AppointmentsService["Appointments DB (Puerto 5433)"]
+    subgraph AppointmentsService["Appointments DB (Port 5433)"]
         working_hours[working_hours]
         schedule_block[schedule_block]
         prof_serv[professional_service]
@@ -36,7 +36,7 @@ flowchart TD
         appointment --> clinical_note
     end
 
-    subgraph LogsService["Logs DB (Puerto 5435)"]
+    subgraph LogsService["Logs DB (Port 5435)"]
         audit_log[audit_log]
     end
 
@@ -62,69 +62,139 @@ flowchart TD
 
 ---
 
-## 2. Detalle por Base de Datos
+## 2. Database Breakdown
 
 ### 1. Clinics Database (`clinics_db`)
-- **Contenedor:** `postgre_clinics_MediCitas`
-- **Puerto externo por defecto:** `5436` (interno `5432`)
-- **Directorio Init:** `database/clinics/init.sql`
-- **Responsabilidad:** Catálogo de clínicas, especialidades médicas y catálogo de servicios de salud ofrecidos por cada clínica.
-- **Tablas:**
-  - `clinic`: Información de la sede o clínica (identificador, nombre, zona horaria, estado).
-  - `specialty`: Catálogo global de especialidades médicas (Cardiología, Pediatría, etc.).
-  - `service`: Catálogo de servicios por clínica con duración en minutos, vinculado a una especialidad.
+- **Container:** `postgre_clinics_MediCitas`
+- **Default External Port:** `5436` (internal `5432`)
+- **Init Script:** `database/clinics/init.sql`
+- **Responsibility:** Clinic branches, medical specialties catalog, and healthcare services catalog offered by each clinic.
+- **Tables:**
+  - `clinic`: Branch or clinic metadata (identifier, name, time zone, active status).
+  - `specialty`: Global catalog of medical specialties (Cardiology, Pediatrics, etc.).
+  - `service`: Healthcare service catalog per clinic with duration in minutes, associated with a specialty.
 
 ### 2. Users Database (`users_db`)
-- **Contenedor:** `postgre_users_MediCitas`
-- **Puerto externo por defecto:** `5434` (interno `5432`)
-- **Directorio Init:** `database/users/init.sql`
-- **Responsabilidad:** Gestión de identidades, roles de dominio, perfiles de profesionales de la salud y padrón de pacientes.
-- **Tablas:**
-  - `role`: Roles del sistema (`platform_admin`, `clinic_admin`, `receptionist`, `professional`).
-  - `app_user`: Vínculo entre la identidad en Keycloak (`keycloak_sub`) y el rol/clínica del dominio.
-  - `professional`: Perfil de profesionales de la salud (médicos, terapeutas) vinculado 1:1 con un usuario.
-  - `professional_specialty`: Relación N:M de especialidades por profesional.
-  - `patient`: Registro de pacientes de cada clínica (identificación, nombre, fecha de nacimiento, contacto).
+- **Container:** `postgre_users_MediCitas`
+- **Default External Port:** `5434` (internal `5432`)
+- **Init Script:** `database/users/init.sql`
+- **Responsibility:** Identity mapping, domain roles, healthcare professional profiles, and patient registry.
+- **Tables:**
+  - `role`: System roles (`platform_admin`, `clinic_admin`, `receptionist`, `professional`).
+  - `app_user`: Link between Keycloak identity (`keycloak_sub`) and the domain role/clinic.
+  - `professional`: Healthcare professional profile (physicians, therapists) linked 1:1 with an application user.
+  - `professional_specialty`: Many-to-many (N:M) relationship between professionals and specialties.
+  - `patient`: Patient registry per clinic (identification, full name, birth date, contact details).
 
 ### 3. Appointments Database (`appointments_db`)
-- **Contenedor:** `postgre_appointments_MediCitas`
-- **Puerto externo por defecto:** `5433` (interno `5432`)
-- **Directorio Init:** `database/appointments/init.sql`
-- **Responsabilidad:** Agendamiento de citas, control de disponibilidad (horarios semanales y bloqueos por vacaciones), y notas clínicas.
-- **Tablas:**
-  - `working_hours`: Horarios semanales por profesional (restringe solapamientos con extensión `btree_gist`).
-  - `schedule_block`: Períodos de bloqueo / vacaciones por profesional.
-  - `professional_service`: Mapeo de qué servicios brinda cada profesional.
-  - `appointment`: Citas médicas programadas. Cuenta con exclusión `EXCLUDE USING gist` para evitar doble agendamiento concurrente tanto para el profesional como para el paciente, y trigger de transición de estados.
-  - `clinical_note`: Registro clínico sensible de la atención médica (1:1 con citas atendidas).
+- **Container:** `postgre_appointments_MediCitas`
+- **Default External Port:** `5433` (internal `5432`)
+- **Init Script:** `database/appointments/init.sql`
+- **Responsibility:** Appointment scheduling, availability management (weekly working hours and schedule leaves/blocks), and clinical notes.
+- **Tables:**
+  - `working_hours`: Weekly recurring schedules per professional (prevents internal overlapping via the `btree_gist` extension).
+  - `schedule_block`: Vacation or leave intervals per professional.
+  - `professional_service`: Mapping of which services each professional is eligible to perform.
+  - `appointment`: Booked medical appointments. Features `EXCLUDE USING gist` constraints to prevent concurrent double-booking for both professionals and patients, as well as status transition triggers.
+  - `clinical_note`: Highly sensitive medical consultation records (1:1 with attended appointments).
 
 ### 4. Logs Database (`logs_db`)
-- **Contenedor:** `postgre_logs_MediCitas`
-- **Puerto externo por defecto:** `5435` (interno `5432`)
-- **Directorio Init:** `database/logs/init.sql`
-- **Responsabilidad:** Trazabilidad y auditoría de accesos y modificaciones a datos sensibles (notas clínicas y contactos de pacientes).
-- **Tablas:**
-  - `audit_log`: Registro inmutable tipo append-only (protegido a nivel de base de datos contra `UPDATE`, `DELETE` y `TRUNCATE`).
+- **Container:** `postgre_logs_MediCitas`
+- **Default External Port:** `5435` (internal `5432`)
+- **Init Script:** `database/logs/init.sql`
+- **Responsibility:** Traceability and auditing of access and changes to sensitive records (clinical notes and patient contact information).
+- **Tables:**
+  - `audit_log`: Immutable append-only audit trail (protected at the database engine level against `UPDATE`, `DELETE`, and `TRUNCATE`).
 
 ---
 
-## 3. Integridad Referencial y Microservicios
+## 3. Referential Integrity in Microservices
 
-En una arquitectura de microservicios con bases de datos aisladas:
-1. **Sin Foreign Keys Cruzadas:** Las restricciones `FOREIGN KEY` entre tablas de diferentes bases de datos se reemplazan por referencias lógicas (`UUID`).
-2. **Índices de Llaves Foráneas Lógicas:** Cada columna de referencia cruzada (por ejemplo `clinic_id`, `professional_id`, `patient_id`) cuenta con un índice B-tree para optimizar las consultas y filtros.
-3. **Validación de Integridad:** La consistencia de negocio entre servicios se valida en la capa de aplicación o mediante mensajería/eventos asíncronos.
+In a microservices architecture with isolated databases:
+1. **No Cross-Database Foreign Keys:** Foreign key constraints across different service databases are replaced with logical references (`UUID`).
+2. **Logical Foreign Key Indexes:** Each cross-reference column (e.g., `clinic_id`, `professional_id`, `patient_id`) has a dedicated B-tree index to optimize query execution plans and tenant filtering.
+3. **Integrity Validation:** Cross-service business consistency is enforced in the application layer and through transactional checks or asynchronous messaging.
 
 ---
 
-## 4. Despliegue con Docker Compose
+## 4. Row-Level Security (RLS) & Multi-Tenancy
 
-Para levantar las bases de datos:
+To enforce strict clinic isolation (**Invariant I5**) and least-privilege role-based access control (**RF15**, **RF17**, **RF18**, **RF19**), MediCitas implements **Row-Level Security (RLS)** natively within PostgreSQL 17.
+
+### Multi-Tenancy Strategy Comparison
+
+| Strategy | Advantages | Disadvantages | Decision in MediCitas |
+| :--- | :--- | :--- | :--- |
+| **Schema-per-Tenant (`CREATE SCHEMA`)** | Physical table isolation per schema; clean logical separation. | Multiplies DDL migrations per clinic; connection routing complexity; expensive schema maintenance at scale. | Discarded due to operational overhead and scaling complexity across multiple branches. |
+| **Discriminator Column (`clinic_id`) at Application Level** | Simple relational model; straightforward queries. | If a query or ORM neglects `WHERE clinic_id = ...`, silent data leakage occurs (security defect in application layer). | Relational foundation adopted, but insufficient on its own without engine-level enforcement. |
+| **Row-Level Security (RLS) + Discriminator Column** | **Engine-enforced isolation:** PostgreSQL intercepts and filters every `SELECT`, `INSERT`, `UPDATE`, `DELETE`; completely prevents leakage even if parameters are tampered with or filters are omitted in the application layer. | Requires initializing session context variables (`SET LOCAL`) on each transaction. | **Selected as MediCitas's core multi-tenancy standard.** |
+
+---
+
+### Session Context Protocol (GUCs)
+
+The application layer or authentication middleware injects the verified identity claims from the JWT token into PostgreSQL transaction-local configuration parameters:
+
+```sql
+-- Executed inside a transaction block (SET LOCAL or via the helper function):
+SELECT app_set_session_context(
+    p_clinic_id        := 'clinic-uuid',
+    p_user_id          := 'user-uuid',
+    p_role             := 'receptionist',         -- platform_admin | clinic_admin | receptionist | professional
+    p_professional_id  := NULL,                   -- professional uuid (only when role = professional)
+    p_is_local         := true                    -- applies only to the current transaction
+);
+```
+
+#### Helper Functions Available in All Databases:
+- `app_current_clinic_id()`: Returns the UUID of the active clinic (or `NULL` for `platform_admin`).
+- `app_current_user_id()`: Returns the UUID of the authenticated application user.
+- `app_current_role()`: Returns the active domain role code (`platform_admin`, `clinic_admin`, `receptionist`, `professional`).
+- `app_current_professional_id()`: Returns the healthcare professional UUID if applicable.
+- `app_is_platform_admin()`: Returns `true` if the current role is `platform_admin`.
+
+> [!IMPORTANT]
+> **Deny by Default:** When a query runs without an initialized session context, these helper functions safely evaluate to `NULL`. As a result, RLS predicate checks evaluate to `FALSE`, returning zero rows and preventing unauthorized access.
+
+---
+
+### RLS Policy Matrix by Entity and Role
+
+Each table has `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY` activated (forcing policies to apply even to the database owner user):
+
+| Database | Table | platform_admin | clinic_admin | receptionist | professional |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Clinics DB** | `clinic` | Full CRUD | Read own clinic | Read own clinic | Read own clinic |
+| | `specialty` | Full CRUD | Read-only | Read-only | Read-only |
+| | `service` | Full CRUD | CRUD for own clinic | Read-only for own clinic | Read-only for own clinic |
+| **Users DB** | `role` | Read-only | Read-only | Read-only | Read-only |
+| | `app_user` | Full CRUD | CRUD for own clinic (non-platform admins) | Read-only for own clinic | Read own profile |
+| | `professional`| Global Read | CRUD for own clinic | Read-only for own clinic | Read clinic / Update own profile |
+| | `patient` | **No access** | CRUD for own clinic | CRUD for own clinic | Read-only for own clinic |
+| **Appointments DB** | `working_hours` | **No access** | CRUD for own clinic | Read-only for own clinic | CRUD for own schedule |
+| | `schedule_block`| **No access** | CRUD for own clinic | Read-only for own clinic | CRUD for own leaves/blocks |
+| | `appointment` | **No access** | CRUD for own clinic | CRUD for own clinic | Read clinic / Update own appointments outcome |
+| | `clinical_note` | **No access** | **No access** | **No access** | **Own attended appointments only (RF15)** |
+| **Logs DB** | `audit_log` | **No access** | **Read own clinic (RF19)** | **No access** | **No access** |
+
+---
+
+### Least Privilege Database Role (`medicitas_app`)
+
+Each database defines an application role `medicitas_app`:
+- It is neither a superuser nor an owner of the schema.
+- In `logs_db`, it only has `SELECT` and `INSERT` permissions (strictly append-only, denying `UPDATE` and `DELETE` at the engine permission level).
+
+---
+
+## 5. Deployment with Docker Compose
+
+To start all databases and services:
 
 ```bash
-# Levantar todas las bases de datos y servicios
+# Start all databases and required services
 docker compose --env-file .env.example up -d db_clinics db_users db_appointments db_logs
 
-# Verificar estado de salud de los contenedores
+# Verify container health status
 docker compose ps
 ```
