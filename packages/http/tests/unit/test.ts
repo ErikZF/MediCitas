@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, vi } from 'vitest';
-import { readConfig } from '../../config/env.ts';
-import { logger } from '../../utils/logger.ts';
+import { readConfig } from '../../src/env.ts';
+import { logger } from '../../src/logger.ts';
 
 test('configuration requires an explicit API port', () => {
   assert.throws(() => readConfig({}), {

@@ -1,5 +1,5 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
-import { logger } from '../utils/logger.ts';
+import { logger } from './logger.ts';
 
 export const notFoundHandler: RequestHandler = (_req, res) => {
   res.status(404).json({ error: 'Route not found.' });
