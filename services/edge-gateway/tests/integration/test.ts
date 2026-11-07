@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import { test, vi, type TestContext } from 'vitest';
 import express, { type Express } from 'express';
 import app from '../../app.ts';
-import { errorHandler } from '../../middleware/errors.ts';
+import { errorHandler } from '@medicitas/http';
 
 async function startServer(t: TestContext, application: Express) {
   // A temporary loopback port keeps tests independent from the configured API port.

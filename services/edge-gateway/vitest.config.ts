@@ -7,9 +7,6 @@ export default defineConfig({
     exclude: [
       ...configDefaults.exclude,
       '**/dist/**',
-      // Empty placeholders have no coverage. Remove each exclusion when real tests are added.
-      'tests/auth/test.ts',
-      'tests/race/test.ts',
     ],
     restoreMocks: true,
   },
