@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { assertTenantContext, resolveDbRole, type DbRoleMap, type TenantContext } from './context.ts';
+import { assertTenantContext, resolveDbRole, type DbRoles, type TenantContext } from './context.ts';
 import { DEFAULT_CONSTRAINT_ERRORS, mapPgError, type ErrorMapping } from './errors.ts';
 import { withRetry, type RetryOptions } from './retry.ts';
 
@@ -14,8 +14,11 @@ export interface TenantTxOptions {
   /** Defaults to READ COMMITTED, set explicitly on every transaction. */
   isolationLevel?: 'read committed' | 'repeatable read' | 'serializable';
   accessMode?: 'read only' | 'read write';
-  /** When given, every transaction runs SET LOCAL ROLE to the actor's database role. */
-  dbRoles?: DbRoleMap;
+  /**
+   * When given, every transaction runs SET LOCAL ROLE. Pass 'medicitas_app' to use the
+   * least-privilege role of the MediCitas schemas, or a map for one role per actor.
+   */
+  dbRoles?: DbRoles;
   /** Per-transaction limit; applied locally so it never outlives the transaction in the pool. */
   statementTimeoutMs?: number;
   /** false disables retries of 40001/40P01. */
@@ -27,8 +30,8 @@ export interface TenantTxOptions {
 /**
  * Runs `fn` inside a transaction that carries the tenant context.
  *
- * Everything it sets lives only inside the transaction (set_config(..., true) and
- * SET LOCAL), so it is safe with PgBouncer in transaction mode: the next request
+ * Everything it sets lives only inside the transaction (app_set_session_context(..., true)
+ * and SET LOCAL ROLE), so it is safe with PgBouncer in transaction mode: the next request
  * that reuses the connection does not inherit this clinic or role.
  *
  * Postgres errors come out as DbError (with an HTTP `status`).
@@ -51,12 +54,17 @@ export async function withTenantTx<T, TSchema extends AnySchema = Record<string,
   const constraintErrors = { ...DEFAULT_CONSTRAINT_ERRORS, ...options.constraintErrors };
 
   const runOnce = () => db.transaction(async (tx) => {
-    // One round trip for the three context variables.
-    // platform_admin has no clinic: it stays empty, so RLS policies return no rows.
-    await tx.execute(sql`select
-      set_config('app.clinic_id', ${ctx.clinicId ?? ''}, true),
-      set_config('app.user_sub', ${ctx.userSub}, true),
-      set_config('app.role', ${ctx.role}, true)`);
+    // Every MediCitas database defines app_set_session_context next to its RLS
+    // policies, so the variable names live in one place: the schema.
+    // The last argument (true) makes the values local to this transaction.
+    // platform_admin has no clinic: the policies that need one return no rows.
+    await tx.execute(sql`select app_set_session_context(
+      ${ctx.clinicId}::uuid,
+      ${ctx.userId}::uuid,
+      ${ctx.role}::text,
+      ${ctx.professionalId ?? null}::uuid,
+      true
+    )`);
 
     if (timeoutMs !== undefined) {
       await tx.execute(sql`select set_config('statement_timeout', ${`${timeoutMs}ms`}, true)`);
