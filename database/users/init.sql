@@ -108,7 +108,8 @@ CREATE TABLE professional (
     clinic_id       UUID         NOT NULL,                     -- Logical reference to Clinics Service
     app_user_id     UUID         NOT NULL UNIQUE REFERENCES app_user (app_user_id),
     full_name       VARCHAR(128) NOT NULL,
-    is_active       BOOLEAN      NOT NULL DEFAULT TRUE
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    UNIQUE (professional_id, clinic_id)
 );
 
 CREATE INDEX idx_professional_clinic_id ON professional (clinic_id);
@@ -118,12 +119,17 @@ CREATE INDEX idx_professional_clinic_id ON professional (clinic_id);
 -- specialty_id is a logical reference to the specialty catalog in Clinics Service
 -- ---------------------------------------------------------------------
 CREATE TABLE professional_specialty (
-    professional_id UUID NOT NULL REFERENCES professional (professional_id),
-    specialty_id    UUID NOT NULL,                             -- Logical reference to Clinics Service
-    PRIMARY KEY (professional_id, specialty_id)
+    professional_id UUID NOT NULL,
+    specialty_id    UUID NOT NULL,                              -- Logical reference to Clinics Service
+    clinic_id       UUID NOT NULL,                              -- Logical reference to Clinics Service
+    PRIMARY KEY (professional_id, specialty_id),
+    FOREIGN KEY (professional_id, clinic_id)
+        REFERENCES professional (professional_id, clinic_id)
+        ON DELETE CASCADE
 );
 
 CREATE INDEX idx_professional_specialty_specialty_id ON professional_specialty (specialty_id);
+CREATE INDEX idx_professional_specialty_clinic_id ON professional_specialty (clinic_id);
 
 -- ---------------------------------------------------------------------
 -- patient: clinic patient registry
@@ -234,11 +240,8 @@ CREATE POLICY prof_spec_select_policy ON professional_specialty
     FOR SELECT
     USING (
         app_is_platform_admin()
-        OR EXISTS (
-            SELECT 1 FROM professional p
-            WHERE p.professional_id = professional_specialty.professional_id
-              AND p.clinic_id = app_current_clinic_id()
-        )
+        OR
+        professional_specialty.clinic_id = app_current_clinic_id()
     );
 
 CREATE POLICY prof_spec_modify_policy ON professional_specialty
@@ -247,22 +250,16 @@ CREATE POLICY prof_spec_modify_policy ON professional_specialty
         app_is_platform_admin()
         OR (
             app_current_role() = 'clinic_admin'
-            AND EXISTS (
-                SELECT 1 FROM professional p
-                WHERE p.professional_id = professional_specialty.professional_id
-                  AND p.clinic_id = app_current_clinic_id()
-            )
+            AND
+            clinic_id = app_current_clinic_id()
         )
     )
     WITH CHECK (
         app_is_platform_admin()
         OR (
             app_current_role() = 'clinic_admin'
-            AND EXISTS (
-                SELECT 1 FROM professional p
-                WHERE p.professional_id = professional_specialty.professional_id
-                  AND p.clinic_id = app_current_clinic_id()
-            )
+            AND
+            clinic_id = app_current_clinic_id()
         )
     );
 
@@ -315,4 +312,3 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO medicitas
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO medicitas_app;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO medicitas_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO medicitas_app;
-
