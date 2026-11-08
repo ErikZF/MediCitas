@@ -1,5 +1,12 @@
-export { APP_ROLES, assertTenantContext, InvalidTenantContextError, isUuid, resolveDbRole } from './context.ts';
-export type { AppRole, DbRoleMap, TenantContext } from './context.ts';
+export {
+  APP_ROLES,
+  assertTenantContext,
+  InvalidTenantContextError,
+  isUuid,
+  MEDICITAS_APP_ROLE,
+  resolveDbRole,
+} from './context.ts';
+export type { AppRole, DbRoleMap, DbRoles, TenantContext } from './context.ts';
 
 export { DbConfigError, readDbConfig } from './config.ts';
 export type { DbConfig } from './config.ts';

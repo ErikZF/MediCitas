@@ -44,3 +44,5 @@ export function drizzleWrapped(code: string, constraint?: string) {
 
 export const CLINIC_A = '0b6c2f3e-4d1a-4c8e-9f2b-7a1d3e5c9b01';
 export const CLINIC_B = '5e9a1c7d-2b4f-4a6e-8d3c-1f7b9e2a4c02';
+export const USER_A = '7c1e4b2a-9d3f-4e6a-b8c5-2a1f6d9e3b04';
+export const PROFESSIONAL_A = '9d3b7f1a-6c2e-4b8d-a5f0-3e1c7b9d2a03';

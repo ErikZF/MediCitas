@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
 import { DbError } from '../../src/errors.ts';
-import { InvalidTenantContextError, type TenantContext } from '../../src/context.ts';
+import { InvalidTenantContextError, MEDICITAS_APP_ROLE, type TenantContext } from '../../src/context.ts';
 import { withTenantTx } from '../../src/tenant-tx.ts';
-import { CLINIC_A, drizzleWrapped, fakeDb } from '../helpers/fake-db.ts';
+import { CLINIC_A, drizzleWrapped, fakeDb, PROFESSIONAL_A, USER_A } from '../helpers/fake-db.ts';
 
-const receptionist: TenantContext = { clinicId: CLINIC_A, userSub: 'kc-sub-recepcion-a', role: 'receptionist' };
+const receptionist: TenantContext = { clinicId: CLINIC_A, userId: USER_A, role: 'receptionist' };
 const noWait = { sleep: async () => {}, random: () => 0 };
 
 describe('withTenantTx: transaction setup', () => {
@@ -21,26 +21,37 @@ describe('withTenantTx: transaction setup', () => {
     assert.deepEqual(configs, [{ isolationLevel: 'serializable', accessMode: 'read only' }]);
   });
 
-  test('passes clinic, user and role as transaction-local parameters', async () => {
+  test('loads the context with app_set_session_context, local to the transaction', async () => {
     const { db, attempts } = fakeDb();
     await withTenantTx(db, receptionist, async () => 'ok');
     const [first] = attempts[0];
-    assert.match(first.sql, /set_config\('app\.clinic_id', \$1, true\)/);
-    assert.match(first.sql, /set_config\('app\.user_sub', \$2, true\)/);
-    assert.match(first.sql, /set_config\('app\.role', \$3, true\)/);
-    assert.deepEqual(first.params, [CLINIC_A, 'kc-sub-recepcion-a', 'receptionist']);
+    const compact = first.sql.replace(/\s+/g, ' ');
+    assert.match(compact, /select app_set_session_context\( \$1::uuid, \$2::uuid, \$3::text, \$4::uuid, true \)/);
+    assert.deepEqual(first.params, [CLINIC_A, USER_A, 'receptionist', null]);
+  });
+
+  test('passes the professional id for the professional role', async () => {
+    const { db, attempts } = fakeDb();
+    await withTenantTx(db, { clinicId: CLINIC_A, userId: USER_A, role: 'professional', professionalId: PROFESSIONAL_A }, async () => 'ok');
+    assert.deepEqual(attempts[0][0].params, [CLINIC_A, USER_A, 'professional', PROFESSIONAL_A]);
   });
 
   test('platform_admin gets no clinic', async () => {
     const { db, attempts } = fakeDb();
-    await withTenantTx(db, { clinicId: null, userSub: 'kc-sub-plataforma', role: 'platform_admin' }, async () => 'ok');
-    assert.equal(attempts[0][0].params[0], '');
+    await withTenantTx(db, { clinicId: null, userId: USER_A, role: 'platform_admin' }, async () => 'ok');
+    assert.equal(attempts[0][0].params[0], null);
   });
 
   test('switches to the actor database role with SET LOCAL ROLE and a quoted name', async () => {
     const { db, attempts } = fakeDb();
     await withTenantTx(db, receptionist, async () => 'ok', { dbRoles: { receptionist: 'db_receptionist' } });
     assert.equal(attempts[0].at(-1)?.sql, 'set local role "db_receptionist"');
+  });
+
+  test('a single role name applies to every application role', async () => {
+    const { db, attempts } = fakeDb();
+    await withTenantTx(db, receptionist, async () => 'ok', { dbRoles: MEDICITAS_APP_ROLE });
+    assert.equal(attempts[0].at(-1)?.sql, 'set local role "medicitas_app"');
   });
 
   test('without a role map the role is not changed', async () => {
@@ -88,8 +99,27 @@ describe('withTenantTx: fails closed before touching the database', () => {
 
   test('platform_admin cannot carry a clinic and every other role must', async () => {
     const { db } = fakeDb();
-    await assert.rejects(withTenantTx(db, { clinicId: CLINIC_A, userSub: 's', role: 'platform_admin' }, async () => 1));
-    await assert.rejects(withTenantTx(db, { clinicId: null, userSub: 's', role: 'professional' }, async () => 1));
+    await assert.rejects(withTenantTx(db, { clinicId: CLINIC_A, userId: USER_A, role: 'platform_admin' }, async () => 1));
+    await assert.rejects(withTenantTx(db, { clinicId: null, userId: USER_A, role: 'clinic_admin' }, async () => 1));
+  });
+
+  test('the user id must be a UUID', async () => {
+    const { db, configs } = fakeDb();
+    await assert.rejects(withTenantTx(db, { ...receptionist, userId: 'kc-sub' }, async () => 1), InvalidTenantContextError);
+    assert.equal(configs.length, 0);
+  });
+
+  test('the professional role needs a professional id and no other role may carry one', async () => {
+    const { db, configs } = fakeDb();
+    await assert.rejects(
+      withTenantTx(db, { clinicId: CLINIC_A, userId: USER_A, role: 'professional' }, async () => 1),
+      InvalidTenantContextError,
+    );
+    await assert.rejects(
+      withTenantTx(db, { ...receptionist, professionalId: PROFESSIONAL_A }, async () => 1),
+      InvalidTenantContextError,
+    );
+    assert.equal(configs.length, 0);
   });
 });
 
@@ -105,7 +135,7 @@ describe('withTenantTx: errors and retries', () => {
     assert.equal(result, 'reservada');
     assert.equal(attempts.length, 2);
     // The second attempt sets the context again: nothing carries over from the first.
-    assert.match(attempts[1][0].sql, /app\.clinic_id/);
+    assert.match(attempts[1][0].sql, /app_set_session_context/);
   });
 
   test('stops after 3 attempts and responds 409', async () => {
