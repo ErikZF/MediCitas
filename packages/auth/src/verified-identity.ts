@@ -7,10 +7,12 @@ export function clearVerifiedRoles(req: Request): void {
   verifiedRoles.delete(req);
 }
 
-export function recordVerifiedRoles(req: Request, roles: unknown): void {
+export function recordVerifiedRoles(req: Request, roles: unknown): readonly string[] | undefined {
   clearVerifiedRoles(req);
   if (!Array.isArray(roles) || !roles.every((role) => typeof role === 'string')) return;
-  verifiedRoles.set(req, Object.freeze([...roles]));
+  const snapshot = Object.freeze([...roles]);
+  verifiedRoles.set(req, snapshot);
+  return snapshot;
 }
 
 export function getVerifiedRoles(req: Request): readonly string[] | undefined {

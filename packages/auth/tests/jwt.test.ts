@@ -47,9 +47,9 @@ describe('signed JWT authentication', () => {
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  async function signed(options: { audience?: string | string[] | null; issuer?: string; expiration?: number | null; wrongKey?: boolean; subject?: string | number | null } = {}) {
+  async function signed(options: { audience?: string | string[] | null; issuer?: string; expiration?: number | null; wrongKey?: boolean; subject?: string | number | null; roles?: unknown } = {}) {
     let jwt = new SignJWT({
-      realm_access: { roles: ['receptionist'] },
+      realm_access: { roles: options.roles === undefined ? ['receptionist'] : options.roles },
       // Negative tests deliberately sign a non-string subject.
       ...(options.subject === null ? {} : { sub: (options.subject ?? 'test-subject') as string }),
     })
@@ -95,11 +95,13 @@ describe('signed JWT authentication', () => {
     { name: 'missing subject', options: { subject: null } },
     { name: 'empty subject', options: { subject: '' } },
     { name: 'non-string subject', options: { subject: 42 } },
+    { name: 'malformed roles', options: { roles: 'not_clinic_admin' } },
   ])('rejects $name', async ({ options }) => {
     const { req, res, next } = await authenticate(await signed(options));
     assert.equal(res.status.mock.calls[0]?.[0], 401);
     assert.deepEqual(res.json.mock.calls[0]?.[0], { error: 'token inválido o expirado' });
     assert.equal(next.mock.calls.length, 0);
+    assert.equal(req.usuario, undefined);
     assert.deepEqual(vi.mocked(console.error).mock.calls, [[JSON.stringify({ level: 'error', event: 'jwt_verification_failed' })]]);
     const allowed = vi.fn();
     requirePermission('appointment:book')(req, res as unknown as Response, allowed);

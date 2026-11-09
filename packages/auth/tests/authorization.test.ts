@@ -4,7 +4,7 @@ import type { Server } from 'node:http';
 import express from 'express';
 import type { Request, Response } from 'express';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, test, vi } from 'vitest';
-import { requiereToken } from '../src/auth.ts';
+import { requiereRol, requiereToken } from '../src/auth.ts';
 import { requirePermission } from '../src/authorization.ts';
 import type { Permission } from '../src/permissions.ts';
 
@@ -27,7 +27,7 @@ async function authenticate(req: Request, roles: unknown) {
   const res = response();
   const next = vi.fn();
   await requiereToken(req, res as unknown as Response, next);
-  assert.equal(next.mock.calls.length, 1);
+  return { res, next };
 }
 
 function authorize(req: Request, permission: Permission = 'appointment:book') {
@@ -62,6 +62,9 @@ describe('permission middleware', () => {
     const { res, next } = authorize(req);
     assert.equal(res.status.mock.calls[0]?.[0], 401);
     assert.equal(next.mock.calls.length, 0);
+    requiereRol('clinic_admin')(req, res as unknown as Response, next);
+    assert.equal(res.status.mock.calls[1]?.[0], 401);
+    assert.equal(next.mock.calls.length, 0);
   });
 
   test.each([
@@ -83,8 +86,12 @@ describe('permission middleware', () => {
   });
 
   test.each([null, 'clinic_admin', 42, {}, ['receptionist', 42]].map((roles) => ({ roles })))('returns 401 for malformed verified roles $roles', async ({ roles }) => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     const req = request();
-    await authenticate(req, roles);
+    const authentication = await authenticate(req, roles);
+    assert.equal(authentication.res.status.mock.calls[0]?.[0], 401);
+    assert.equal(authentication.next.mock.calls.length, 0);
+    assert.equal(req.usuario, undefined);
     const { res, next } = authorize(req);
     assert.equal(res.status.mock.calls[0]?.[0], 401);
     assert.equal(next.mock.calls.length, 0);
@@ -93,6 +100,7 @@ describe('permission middleware', () => {
   test('missing roles grant no permissions', async () => {
     const req = request();
     await authenticate(req, undefined);
+    assert.deepEqual(req.usuario?.roles, []);
     assert.equal(authorize(req).res.status.mock.calls[0]?.[0], 403);
   });
 
@@ -106,6 +114,7 @@ describe('permission middleware', () => {
     await requiereToken(req, res as unknown as Response, next);
     assert.equal(res.status.mock.calls[0]?.[0], 401);
     assert.equal(next.mock.calls.length, 0);
+    assert.equal(req.usuario, undefined);
     assert.equal(authorize(req).res.status.mock.calls[0]?.[0], 401);
   });
 
@@ -114,6 +123,24 @@ describe('permission middleware', () => {
     await authenticate(req, ['professional']);
     req.usuario!.roles.push('clinic_admin');
     assert.equal(authorize(req).res.status.mock.calls[0]?.[0], 403);
+    const res = response();
+    const next = vi.fn();
+    requiereRol('clinic_admin')(req, res as unknown as Response, next);
+    assert.equal(res.status.mock.calls[0]?.[0], 403);
+    assert.equal(next.mock.calls.length, 0);
+  });
+
+  test('role checks use exact membership in verified roles, never substrings', async () => {
+    const req = request();
+    await authenticate(req, ['not_clinic_admin', 'receptionist']);
+    const res = response();
+    const next = vi.fn();
+    requiereRol('clinic_admin')(req, res as unknown as Response, next);
+    assert.equal(res.status.mock.calls[0]?.[0], 403);
+    assert.equal(next.mock.calls.length, 0);
+    requiereRol('receptionist')(req, res as unknown as Response, next);
+    assert.equal(res.status.mock.calls.length, 1);
+    assert.equal(next.mock.calls.length, 1);
   });
 
   test('does not share verified roles between requests', async () => {
@@ -229,8 +256,9 @@ describe('permission middleware over HTTP (JWT verification mocked)', () => {
   });
 
   test('401 for malformed roles returned by the simulated verifier', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     verifiedPayload(['receptionist', 42]);
-    assert.deepEqual(await call('/book', 'test-token'), { status: 401, body: { error: 'Authentication required.' } });
+    assert.deepEqual(await call('/book', 'test-token'), { status: 401, body: { error: 'token inválido o expirado' } });
     assert.equal(handler.mock.calls.length, 0);
   });
 

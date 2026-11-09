@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { Request, Response, NextFunction } from "express";
-import { clearVerifiedRoles, recordVerifiedRoles } from './verified-identity.ts';
+import { clearVerifiedRoles, getVerifiedRoles, recordVerifiedRoles } from './verified-identity.ts';
 import { AuthConfigurationError, readAuthConfig } from './config.ts';
 
 // no se arma al importar el archivo, solo la primera vez que hace falta validar un token de verdad
@@ -33,6 +33,7 @@ declare module "express-serve-static-core" {
 // 401: valida que venga un token y que sea valido de verdad (firma, expiracion, emisor)
 export async function requiereToken(req: Request, res: Response, next: NextFunction) {
   clearVerifiedRoles(req);
+  delete req.usuario;
   const authHeader = req.headers.authorization;
 
   // si no viene con "Bearer " ni vale la pena intentar verificarlo
@@ -56,14 +57,18 @@ export async function requiereToken(req: Request, res: Response, next: NextFunct
       throw new Error('Invalid token subject.');
     }
 
+    const tokenRoles = (payload.realm_access as { roles?: unknown } | undefined)?.roles;
+    const roles = recordVerifiedRoles(req, tokenRoles === undefined ? [] : tokenRoles);
+    if (roles === undefined) {
+      throw new Error('Invalid token roles.');
+    }
+
     req.usuario = {
       id: payload.sub,
       username: payload.preferred_username as string,
-      roles: (payload.realm_access as { roles?: string[] } | undefined)?.roles ?? [],
+      roles: [...roles],
     };
 
-    const tokenRoles = (payload.realm_access as { roles?: unknown } | undefined)?.roles;
-    recordVerifiedRoles(req, tokenRoles === undefined ? [] : tokenRoles);
     next();
   } catch (error) {
     const configurationFailed = error instanceof AuthConfigurationError;
@@ -81,7 +86,11 @@ export async function requiereToken(req: Request, res: Response, next: NextFunct
 // 403: el token es valido pero no trae el rol que la ruta exige
 export function requiereRol(rol: string) {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.usuario?.roles.includes(rol)) {
+    const roles = getVerifiedRoles(req);
+    if (roles === undefined) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+    if (!roles.includes(rol)) {
       return res.status(403).json({ error: `falta el rol '${rol}'` });
     }
     next();
