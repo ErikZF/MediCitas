@@ -1,18 +1,24 @@
-//Total by now: 58 tests
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
-import { hasPermission, PERMISSIONS, ROLE_PERMISSIONS, type Permission } from '../src/permissions.ts';
+import { hasPermission, PERMISSIONS, ROLE_PERMISSIONS, type Permission, type PermissionRole } from '../src/permissions.ts';
 
 // Expected policy is independent of the production matrix.
-const policy: Record<string, readonly Permission[]> = {
+const policy: Record<PermissionRole, readonly Permission[]> = {
   platform_admin: ['clinic:create'],
   clinic_admin: [
     'user:create', 'user:deactivate', 'user:assign-role',
     'service:create', 'service:read', 'service:update', 'service:delete',
     'professional:create', 'schedule:read', 'schedule:manage', 'appointment:book',
+    'appointment:read', 'patient:create', 'patient:read', 'patient:update', 'audit:read',
   ],
-  receptionist: ['schedule:read', 'appointment:book'],
-  professional: ['schedule:read', 'schedule:manage'],
+  receptionist: [
+    'schedule:read', 'appointment:book', 'appointment:read',
+    'patient:create', 'patient:read', 'patient:update',
+  ],
+  professional: [
+    'schedule:read', 'schedule:manage', 'appointment:read', 'patient:read',
+    'clinical-note:create', 'clinical-note:read',
+  ],
 };
 
 describe('initial permission policy', () => {
