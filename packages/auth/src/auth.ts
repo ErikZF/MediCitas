@@ -1,5 +1,6 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { Request, Response, NextFunction } from "express";
+import { clearVerifiedRoles, recordVerifiedRoles } from './verified-identity.ts';
 
 // no se arma al importar el archivo, solo la primera vez que hace falta validar un token de verdad
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -28,6 +29,7 @@ declare module "express-serve-static-core" {
 
 // 401: valida que venga un token y que sea valido de verdad (firma, expiracion, emisor)
 export async function requiereToken(req: Request, res: Response, next: NextFunction) {
+  clearVerifiedRoles(req);
   const authHeader = req.headers.authorization;
 
   // si no viene con "Bearer " ni vale la pena intentar verificarlo
@@ -50,6 +52,8 @@ export async function requiereToken(req: Request, res: Response, next: NextFunct
       roles: (payload.realm_access as { roles?: string[] } | undefined)?.roles ?? [],
     };
 
+    const tokenRoles = (payload.realm_access as { roles?: unknown } | undefined)?.roles;
+    recordVerifiedRoles(req, tokenRoles === undefined ? [] : tokenRoles);
     next();
   } catch (error) {
     console.error("Token inválido:", error);
