@@ -1,15 +1,18 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { Request, Response, NextFunction } from "express";
 import { clearVerifiedRoles, recordVerifiedRoles } from './verified-identity.ts';
+import { AuthConfigurationError, readAuthConfig } from './config.ts';
 
 // no se arma al importar el archivo, solo la primera vez que hace falta validar un token de verdad
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
+let cachedJwksUrl: string | undefined;
 
-function obtenerJwks() {
-    if (!jwks) {
+function obtenerJwks(url: URL) {
+    if (!jwks || cachedJwksUrl !== url.href) {
         jwks = createRemoteJWKSet(
-            new URL(`${process.env.KEYCLOAK_INTERNAL_URL}/realms/${process.env.REALM_NAME}/protocol/openid-connect/certs`)
+            url
         );
+        cachedJwksUrl = url.href;
     }
     return jwks;
 }
@@ -42,12 +45,19 @@ export async function requiereToken(req: Request, res: Response, next: NextFunct
   try {
     // el issuer tiene que ser el mismo que usa el frontend para pedir el token,
     // no la url interna de docker (esa es solo para buscar las llaves)
-    const { payload } = await jwtVerify(token, obtenerJwks(), {
-      issuer: process.env.KEYCLOAK_ISSUER,
+    const config = readAuthConfig();
+    const { payload } = await jwtVerify(token, obtenerJwks(config.jwksUrl), {
+      issuer: config.issuer,
+      audience: config.audience,
+      requiredClaims: ['exp', 'sub'],
     });
 
+    if (typeof payload.sub !== 'string' || payload.sub.length === 0) {
+      throw new Error('Invalid token subject.');
+    }
+
     req.usuario = {
-      id: payload.sub as string,
+      id: payload.sub,
       username: payload.preferred_username as string,
       roles: (payload.realm_access as { roles?: string[] } | undefined)?.roles ?? [],
     };
@@ -56,7 +66,14 @@ export async function requiereToken(req: Request, res: Response, next: NextFunct
     recordVerifiedRoles(req, tokenRoles === undefined ? [] : tokenRoles);
     next();
   } catch (error) {
-    console.error("Token inválido:", error);
+    const configurationFailed = error instanceof AuthConfigurationError;
+    console.error(JSON.stringify({
+      level: 'error',
+      event: configurationFailed ? 'auth_configuration_invalid' : 'jwt_verification_failed',
+    }));
+    if (configurationFailed) {
+      return res.status(500).json({ error: 'Authentication unavailable.' });
+    }
     return res.status(401).json({ error: "token inválido o expirado" });
   }
 }

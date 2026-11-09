@@ -42,6 +42,8 @@ describe('permission middleware', () => {
     verify.mockReset();
     vi.stubEnv('KEYCLOAK_INTERNAL_URL', 'https://identity.example');
     vi.stubEnv('REALM_NAME', 'test');
+    vi.stubEnv('KEYCLOAK_ISSUER', 'https://identity.example/realms/test');
+    vi.stubEnv('KEYCLOAK_AUDIENCE', 'test-api');
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -176,6 +178,8 @@ describe('permission middleware over HTTP (JWT verification mocked)', () => {
     handler.mockClear();
     vi.stubEnv('KEYCLOAK_INTERNAL_URL', 'https://identity.example');
     vi.stubEnv('REALM_NAME', 'test');
+    vi.stubEnv('KEYCLOAK_ISSUER', 'https://identity.example/realms/test');
+    vi.stubEnv('KEYCLOAK_AUDIENCE', 'test-api');
   });
   afterEach(() => vi.unstubAllEnvs());
 
