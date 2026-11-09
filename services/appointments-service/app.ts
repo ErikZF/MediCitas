@@ -1,6 +1,8 @@
 import express, { type Express } from 'express';
 import { errorHandler, notFoundHandler } from '@medicitas/http';
 import { requireTenantContext, type ContextResolver } from './http/context.ts';
+import { createBookingRouter } from './modules/booking/booking.routes.ts';
+import type { BookingDeps } from './modules/booking/booking.service.ts';
 import routes from './modules/routes.ts';
 import { createScheduleRouter } from './modules/schedule/schedule.routes.ts';
 import type { ScheduleDeps } from './modules/schedule/schedule.service.ts';
@@ -8,7 +10,8 @@ import type { ScheduleDeps } from './modules/schedule/schedule.service.ts';
 export interface AppDeps {
   /** Builds the tenant context from the request (the verified token in production). */
   resolveContext: ContextResolver;
-  schedule: ScheduleDeps;
+  schedule?: ScheduleDeps;
+  booking?: BookingDeps;
 }
 
 /**
@@ -22,7 +25,13 @@ export function createApp(deps?: AppDeps): Express {
 
   app.use(routes);
   if (deps !== undefined) {
-    app.use('/professionals', requireTenantContext(deps.resolveContext), createScheduleRouter(deps.schedule));
+    const withContext = requireTenantContext(deps.resolveContext);
+    if (deps.schedule !== undefined) {
+      app.use('/professionals', withContext, createScheduleRouter(deps.schedule));
+    }
+    if (deps.booking !== undefined) {
+      app.use('/appointments', withContext, createBookingRouter(deps.booking));
+    }
   }
   app.use(notFoundHandler);
   app.use(errorHandler);

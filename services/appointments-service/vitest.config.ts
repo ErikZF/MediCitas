@@ -7,8 +7,6 @@ export default defineConfig({
     exclude: [
       ...configDefaults.exclude,
       '**/dist/**',
-      // Empty placeholder for the booking race test (card E6). Remove when the real test is added.
-      'tests/race/test.ts',
     ],
     restoreMocks: true,
   },

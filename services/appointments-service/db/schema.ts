@@ -40,12 +40,12 @@ export const appointment = pgTable('appointment', {
   startsAt: timestamptz('starts_at').notNull(),
   endsAt: timestamptz('ends_at').notNull(),
   durationMinutes: integer('duration_minutes').notNull(),
-  status: varchar('status', { length: 16 }).notNull(),
+  status: varchar('status', { length: 16 }).notNull().default('booked'),
   cancelReason: varchar('cancel_reason', { length: 256 }),
   cancelledBy: uuid('cancelled_by'),
   rescheduledFromId: uuid('rescheduled_from_id'),
   createdBy: uuid('created_by').notNull(),
-  createdAt: timestamptz('created_at').notNull(),
+  createdAt: timestamptz('created_at').notNull().defaultNow(),
 });
 
 export const clinicalNote = pgTable('clinical_note', {
@@ -54,6 +54,6 @@ export const clinicalNote = pgTable('clinical_note', {
   clinicId: uuid('clinic_id').notNull(),
   professionalId: uuid('professional_id').notNull(),
   content: text('content').notNull(),
-  createdAt: timestamptz('created_at').notNull(),
-  updatedAt: timestamptz('updated_at').notNull(),
+  createdAt: timestamptz('created_at').notNull().defaultNow(),
+  updatedAt: timestamptz('updated_at').notNull().defaultNow(),
 });

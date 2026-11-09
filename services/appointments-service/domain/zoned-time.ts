@@ -57,6 +57,13 @@ export function zonedToUtc(localAsUtcMs: number, timeZone: string): number {
   return localAsUtcMs - offsetAtGuess;
 }
 
+/** Calendar date ("YYYY-MM-DD") of an instant as seen in `timeZone`. */
+export function localDateOf(instantMs: number, timeZone: string): string {
+  const parts = formatter(timeZone).formatToParts(new Date(instantMs));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
 /** Parses "YYYY-MM-DD" into its parts, or returns null when it is not a real calendar date. */
 export function parseLocalDate(date: string): { year: number; month: number; day: number } | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);

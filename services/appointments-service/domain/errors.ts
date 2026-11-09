@@ -21,12 +21,14 @@ export class ForbiddenError extends Error {
   }
 }
 
+/** 422. `code` names the rule that failed, for example outside_working_hours. */
 export class ValidationError extends Error {
   readonly status = 422;
-  readonly code = 'invalid_request';
+  readonly code: string;
 
-  constructor(message = 'Invalid request.') {
+  constructor(message = 'Invalid request.', code = 'invalid_request') {
     super(message);
     this.name = 'ValidationError';
+    this.code = code;
   }
 }
