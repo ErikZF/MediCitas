@@ -27,7 +27,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
   platform_admin: Object.freeze(['clinic:create'] as const),
   clinic_admin: Object.freeze(clinicPermissions),
   receptionist: Object.freeze(['schedule:read', 'appointment:book'] as const),
-  // schedule:manage only permits the professional's own agenda; E3 checks ownership.
+  // schedule:manage only permits the professional's own agenda, E3 checks ownership.
   professional: Object.freeze(['schedule:read', 'schedule:manage'] as const),
 } satisfies Record<string, readonly Permission[]>);
 

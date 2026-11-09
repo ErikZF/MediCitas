@@ -1,3 +1,4 @@
+//Total by now: 58 tests
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
 import { hasPermission, PERMISSIONS, ROLE_PERMISSIONS, type Permission } from '../src/permissions.ts';
