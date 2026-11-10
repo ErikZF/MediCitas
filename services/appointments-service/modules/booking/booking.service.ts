@@ -8,15 +8,14 @@
 // enough because the guarantee comes from the constraint, not from what each
 // transaction reads.
 
-import { and, eq, gt, lt, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
 import { lockProfessionalAgenda } from '../../db/locks.ts';
-import { appointment, professionalService, scheduleBlock, workingHours } from '../../db/schema.ts';
-import { freeWindows } from '../../domain/availability.ts';
-import { ForbiddenError, NotFoundError, ValidationError } from '../../domain/errors.ts';
-import { localDateOf, parseLocalDate, weekdayOf } from '../../domain/zoned-time.ts';
+import { appointment } from '../../db/schema.ts';
+import { ForbiddenError, NotFoundError } from '../../domain/errors.ts';
 import type { BookingInput } from './booking.schemas.ts';
 import type { ClinicCatalog, PatientDirectory } from './ports.ts';
+import { assertSlotBookable, slotFor } from './slot-rules.ts';
 
 export interface BookingDeps {
   db: Database;
@@ -35,12 +34,14 @@ export interface AppointmentDto {
   endsAt: string;
   durationMinutes: number;
   status: string;
+  cancelReason: string | null;
+  /** The appointment this one replaced (RF10), if any. */
+  rescheduledFromId: string | null;
 }
 
-const asApp = { dbRoles: MEDICITAS_APP_ROLE } as const;
-const MINUTE_MS = 60_000;
+export const asApp = { dbRoles: MEDICITAS_APP_ROLE } as const;
 
-function toAppointmentDto(row: typeof appointment.$inferSelect): AppointmentDto {
+export function toAppointmentDto(row: typeof appointment.$inferSelect): AppointmentDto {
   return {
     appointmentId: row.appointmentId,
     professionalId: row.professionalId,
@@ -50,6 +51,8 @@ function toAppointmentDto(row: typeof appointment.$inferSelect): AppointmentDto 
     endsAt: row.endsAt.toISOString(),
     durationMinutes: row.durationMinutes,
     status: row.status,
+    cancelReason: row.cancelReason,
+    rescheduledFromId: row.rescheduledFromId,
   };
 }
 
@@ -58,51 +61,15 @@ export async function bookAppointment(deps: BookingDeps, ctx: TenantContext, inp
     throw new ForbiddenError();
   }
 
-  const startsAt = new Date(input.startsAt);
-  if (startsAt.getTime() <= (deps.now?.() ?? new Date()).getTime()) {
-    throw new ValidationError('Appointments must start in the future.', 'starts_in_past');
-  }
-
   // Other services first, outside the transaction.
   const service = await deps.catalog.getBookableService(ctx, input.serviceId);
+  const slot = slotFor(input.professionalId, service, new Date(input.startsAt), deps.now?.() ?? new Date());
   await deps.patients.assertInClinic(ctx, input.patientId);
-
-  // I4: the end comes from the service, never from the request.
-  const endsAt = new Date(startsAt.getTime() + service.durationMinutes * MINUTE_MS);
-  const date = localDateOf(startsAt.getTime(), service.timeZone);
-  const weekday = weekdayOf(parseLocalDate(date)!);
 
   return withTenantTx(deps.db, ctx, async (tx) => {
     // Shared: bookings run in parallel, but never alongside a schedule change (I3).
     await lockProfessionalAgenda(tx, input.professionalId, 'shared');
-
-    const offered = await tx.select({ found: sql<number>`1` }).from(professionalService)
-      .where(and(eq(professionalService.professionalId, input.professionalId), eq(professionalService.serviceId, input.serviceId)))
-      .limit(1);
-    if (offered.length === 0) {
-      throw new ValidationError('The professional does not offer this service.', 'service_not_offered');
-    }
-
-    // I3, first half: not inside a block.
-    const blocked = await tx.select({ found: sql<number>`1` }).from(scheduleBlock)
-      .where(and(
-        eq(scheduleBlock.professionalId, input.professionalId),
-        lt(scheduleBlock.startsAt, endsAt),
-        gt(scheduleBlock.endsAt, startsAt),
-      ))
-      .limit(1);
-    if (blocked.length > 0) {
-      throw new ValidationError('The professional is unavailable at that time.', 'professional_unavailable');
-    }
-
-    // I3, second half: fully inside one block of working hours, read in the clinic's time zone.
-    const hours = await tx.select({ weekday: workingHours.weekday, startTime: workingHours.startTime, endTime: workingHours.endTime })
-      .from(workingHours)
-      .where(and(eq(workingHours.professionalId, input.professionalId), eq(workingHours.weekday, weekday)));
-    const windows = freeWindows({ date, timeZone: service.timeZone, workingHours: hours, blocks: [], appointments: [] });
-    if (!windows.some((w) => w.start <= startsAt.getTime() && endsAt.getTime() <= w.end)) {
-      throw new ValidationError('The appointment falls outside the working hours.', 'outside_working_hours');
-    }
+    await assertSlotBookable(tx, slot);
 
     // I1 and I2 are decided here, by the EXCLUDE constraints, also under concurrency.
     const [row] = await tx.insert(appointment).values({
@@ -110,8 +77,8 @@ export async function bookAppointment(deps: BookingDeps, ctx: TenantContext, inp
       professionalId: input.professionalId,
       patientId: input.patientId,
       serviceId: input.serviceId,
-      startsAt,
-      endsAt,
+      startsAt: slot.startsAt,
+      endsAt: slot.endsAt,
       durationMinutes: service.durationMinutes,
       status: 'booked',
       createdBy: ctx.userId,

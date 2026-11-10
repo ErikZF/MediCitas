@@ -21,6 +21,17 @@ export class ForbiddenError extends Error {
   }
 }
 
+/** 409. A status change the appointment life cycle does not allow (RF13). */
+export class TransitionError extends Error {
+  readonly status = 409;
+  readonly code = 'invalid_transition';
+
+  constructor(message = 'Status change not allowed.') {
+    super(message);
+    this.name = 'TransitionError';
+  }
+}
+
 /** 422. `code` names the rule that failed, for example outside_working_hours. */
 export class ValidationError extends Error {
   readonly status = 422;
