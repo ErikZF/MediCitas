@@ -1,6 +1,7 @@
 import express, { type Express } from 'express';
 import { errorHandler, notFoundHandler } from '@medicitas/http';
 import { requireTenantContext, type ContextResolver } from './http/context.ts';
+import { createAppointmentCountsRouter, type AppointmentCountsDeps } from './modules/appointment-counts/appointment-counts.routes.ts';
 import { createBookingRouter } from './modules/booking/booking.routes.ts';
 import type { BookingDeps } from './modules/booking/booking.service.ts';
 import routes from './modules/routes.ts';
@@ -12,6 +13,7 @@ export interface AppDeps {
   resolveContext: ContextResolver;
   schedule?: ScheduleDeps;
   booking?: BookingDeps;
+  appointmentCounts?: AppointmentCountsDeps;
 }
 
 /**
@@ -28,6 +30,9 @@ export function createApp(deps?: AppDeps): Express {
     const withContext = requireTenantContext(deps.resolveContext);
     if (deps.schedule !== undefined) {
       app.use('/professionals', withContext, createScheduleRouter(deps.schedule));
+    }
+    if (deps.appointmentCounts !== undefined) {
+      app.use('/appointments/counts', withContext, createAppointmentCountsRouter(deps.appointmentCounts));
     }
     if (deps.booking !== undefined) {
       app.use('/appointments', withContext, createBookingRouter(deps.booking));

@@ -9,10 +9,10 @@ const policy: Record<PermissionRole, readonly Permission[]> = {
     'user:create', 'user:deactivate', 'user:assign-role',
     'service:create', 'service:read', 'service:update', 'service:delete',
     'professional:create', 'schedule:read', 'schedule:manage', 'appointment:book',
-    'appointment:read', 'patient:create', 'patient:read', 'patient:update', 'audit:read',
+    'appointment:read', 'appointment:count', 'patient:create', 'patient:read', 'patient:update', 'audit:read',
   ],
   receptionist: [
-    'schedule:read', 'appointment:book', 'appointment:read',
+    'schedule:read', 'appointment:book', 'appointment:read', 'appointment:count',
     'patient:create', 'patient:read', 'patient:update',
   ],
   professional: [
