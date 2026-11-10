@@ -45,7 +45,8 @@ export async function startBookingApp(options: {
   timeZone: string;
   workingHours: Array<{ weekday: number; startTime: string; endTime: string }>;
   maxConnections?: number;
-  now?: Date;
+  /** The service's clock. Defaults to 2026-01-01T00:00:00Z, before every test slot. */
+  now?: () => Date;
 }): Promise<BookingApp> {
   const database = await createTestDatabase(options.adminUrl, options.label, options.maxConnections ?? 4);
 
@@ -85,7 +86,7 @@ export async function startBookingApp(options: {
       }
     },
   };
-  const now = () => options.now ?? new Date('2026-01-01T00:00:00Z');
+  const now = options.now ?? (() => new Date('2026-01-01T00:00:00Z'));
 
   const app = createApp({
     resolveContext: (req) => {
