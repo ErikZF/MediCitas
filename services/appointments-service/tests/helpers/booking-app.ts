@@ -5,10 +5,11 @@ import type { TenantContext } from '@medicitas/db';
 import { createApp } from '../../app.ts';
 import { NotFoundError } from '../../domain/errors.ts';
 import type { ClinicCatalog, PatientDirectory } from '../../modules/booking/ports.ts';
+import type { ProfessionalDirectory } from '../../modules/schedule/schedule.service.ts';
 import { createTestDatabase } from './test-database.ts';
 
-// A running appointments-service on a throwaway database, with clinics-service and
-// users-service replaced by in-memory stand-ins.
+// A running appointments-service (booking and availability) on a throwaway database,
+// with clinics-service and users-service replaced by in-memory stand-ins.
 
 export const CLINIC_A = '0b6c2f3e-4d1a-4c8e-9f2b-7a1d3e5c9b01';
 export const CLINIC_B = '5e9a1c7d-2b4f-4a6e-8d3c-1f7b9e2a4c02';
@@ -77,12 +78,22 @@ export async function startBookingApp(options: {
     },
   };
 
+  const directory: ProfessionalDirectory = {
+    async assertInClinic(ctx, professionalId) {
+      if (ctx.clinicId !== CLINIC_A || (professionalId !== PROF_1 && professionalId !== PROF_2)) {
+        throw new NotFoundError('Professional not found in this clinic.');
+      }
+    },
+  };
+  const now = () => options.now ?? new Date('2026-01-01T00:00:00Z');
+
   const app = createApp({
     resolveContext: (req) => {
       const header = req.header('x-test-context');
       return header === undefined ? null : JSON.parse(header) as TenantContext;
     },
-    booking: { db: database.db, catalog, patients, now: () => options.now ?? new Date('2026-01-01T00:00:00Z') },
+    booking: { db: database.db, catalog, patients, now },
+    availability: { db: database.db, catalog, directory, now },
   });
   const server: Server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
