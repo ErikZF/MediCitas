@@ -29,6 +29,17 @@ export type DbRoles = string | DbRoleMap;
 /** Least-privilege role created by every MediCitas init.sql. It has no BYPASSRLS. */
 export const MEDICITAS_APP_ROLE = 'medicitas_app';
 
+export const DB_ADMIN_ROLE = 'db_admin';
+export const DB_RECEPTIONIST_ROLE = 'db_receptionist';
+export const DB_PROFESSIONAL_ROLE = 'db_professional';
+
+export const MEDICITAS_DB_ROLES: Record<AppRole, string> = {
+  platform_admin: DB_ADMIN_ROLE,
+  clinic_admin: DB_ADMIN_ROLE,
+  receptionist: DB_RECEPTIONIST_ROLE,
+  professional: DB_PROFESSIONAL_ROLE,
+};
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PG_IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
 
