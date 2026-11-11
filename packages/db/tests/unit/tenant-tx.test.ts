@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'vitest';
 import { DbError } from '../../src/errors.ts';
-import { InvalidTenantContextError, MEDICITAS_APP_ROLE, type TenantContext } from '../../src/context.ts';
+import {
+  InvalidTenantContextError,
+  MEDICITAS_APP_ROLE,
+  MEDICITAS_DB_ROLES,
+  type TenantContext,
+} from '../../src/context.ts';
 import { withTenantTx } from '../../src/tenant-tx.ts';
 import { CLINIC_A, drizzleWrapped, fakeDb, PROFESSIONAL_A, USER_A } from '../helpers/fake-db.ts';
 
@@ -52,6 +57,30 @@ describe('withTenantTx: transaction setup', () => {
     const { db, attempts } = fakeDb();
     await withTenantTx(db, receptionist, async () => 'ok', { dbRoles: MEDICITAS_APP_ROLE });
     assert.equal(attempts[0].at(-1)?.sql, 'set local role "medicitas_app"');
+  });
+
+  test('MEDICITAS_DB_ROLES maps domain actors to their native least-privilege DB role', async () => {
+    const { db: dbRec, attempts: attRec } = fakeDb();
+    await withTenantTx(dbRec, receptionist, async () => 'ok', { dbRoles: MEDICITAS_DB_ROLES });
+    assert.equal(attRec[0].at(-1)?.sql, 'set local role "db_receptionist"');
+
+    const { db: dbProf, attempts: attProf } = fakeDb();
+    await withTenantTx(
+      dbProf,
+      { clinicId: CLINIC_A, userId: USER_A, role: 'professional', professionalId: PROFESSIONAL_A },
+      async () => 'ok',
+      { dbRoles: MEDICITAS_DB_ROLES },
+    );
+    assert.equal(attProf[0].at(-1)?.sql, 'set local role "db_professional"');
+
+    const { db: dbAdmin, attempts: attAdmin } = fakeDb();
+    await withTenantTx(
+      dbAdmin,
+      { clinicId: CLINIC_A, userId: USER_A, role: 'clinic_admin' },
+      async () => 'ok',
+      { dbRoles: MEDICITAS_DB_ROLES },
+    );
+    assert.equal(attAdmin[0].at(-1)?.sql, 'set local role "db_admin"');
   });
 
   test('without a role map the role is not changed', async () => {

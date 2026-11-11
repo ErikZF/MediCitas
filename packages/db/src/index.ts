@@ -1,9 +1,13 @@
 export {
   APP_ROLES,
   assertTenantContext,
+  DB_ADMIN_ROLE,
+  DB_PROFESSIONAL_ROLE,
+  DB_RECEPTIONIST_ROLE,
   InvalidTenantContextError,
   isUuid,
   MEDICITAS_APP_ROLE,
+  MEDICITAS_DB_ROLES,
   resolveDbRole,
 } from './context.ts';
 export type { AppRole, DbRoleMap, DbRoles, TenantContext } from './context.ts';

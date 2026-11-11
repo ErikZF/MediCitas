@@ -5,7 +5,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, test } from 'vitest';
 import { readDbConfig } from '../../src/config.ts';
-import { MEDICITAS_APP_ROLE, type TenantContext } from '../../src/context.ts';
+import { MEDICITAS_APP_ROLE, MEDICITAS_DB_ROLES, type TenantContext } from '../../src/context.ts';
 import { DbError } from '../../src/errors.ts';
 import { createDatabase } from '../../src/pool.ts';
 import { withTenantTx, type Database } from '../../src/tenant-tx.ts';
@@ -131,6 +131,32 @@ describe.skipIf(!url)('withTenantTx against the real appointments schema', () =>
     assert.deepEqual(await notes(professional(PROFESSIONAL_A)), ['note of professional A']);
     assert.deepEqual(await notes(professional(PROFESSIONAL_B)), ['note of professional B']);
     assert.deepEqual(await notes(receptionistA), []);
+  });
+
+  test('least-privilege DB roles: receptionist and admin are denied at engine level from reading clinical_note', async () => {
+    const roles = { dbRoles: MEDICITAS_DB_ROLES };
+
+    // Receptionist has no SELECT on clinical_note
+    const recError = await withTenantTx(db, receptionistA, async (tx) => {
+      await tx.execute(sql`select content from clinical_note`);
+    }, roles).catch((e: unknown) => e);
+    assert.ok(recError instanceof DbError);
+    assert.equal(recError.status, 403);
+
+    // Admin has no SELECT on clinical_note
+    const adminCtx: TenantContext = { clinicId: CLINIC_A, userId: USER_A, role: 'clinic_admin' };
+    const adminError = await withTenantTx(db, adminCtx, async (tx) => {
+      await tx.execute(sql`select content from clinical_note`);
+    }, roles).catch((e: unknown) => e);
+    assert.ok(adminError instanceof DbError);
+    assert.equal(adminError.status, 403);
+
+    // Professional has SELECT on clinical_note
+    const profNotes = await withTenantTx(db, professional(PROFESSIONAL_A), async (tx) => {
+      const result = await tx.execute(sql`select content from clinical_note`);
+      return result.rows.map((row) => row.content);
+    }, roles);
+    assert.deepEqual(profNotes, ['note of professional A']);
   });
 
   test('neither context nor role survive the commit on a reused connection', async () => {
