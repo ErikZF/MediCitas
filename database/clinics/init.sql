@@ -156,19 +156,35 @@ CREATE POLICY service_delete_policy ON service
     USING (app_is_platform_admin() OR (clinic_id = app_current_clinic_id() AND app_current_role() = 'clinic_admin'));
 
 -- --------------------------------------------------------------------
--- Least Privilege Application Role
+-- Database Roles
 -- --------------------------------------------------------------------
 DO $$
 BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'db_admin') THEN
+        CREATE ROLE db_admin;
+    END IF;
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'db_receptionist') THEN
+        CREATE ROLE db_receptionist;
+    END IF;
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'db_professional') THEN
+        CREATE ROLE db_professional;
+    END IF;
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'medicitas_app') THEN
         CREATE ROLE medicitas_app;
     END IF;
 END
 $$;
 
-GRANT USAGE ON SCHEMA public TO medicitas_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO medicitas_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO medicitas_app;
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO medicitas_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO medicitas_app;
+DO $$
+BEGIN
+    EXECUTE format('GRANT db_admin, db_receptionist, db_professional, medicitas_app TO %I', CURRENT_USER);
+END
+$$;
+
+GRANT USAGE ON SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON clinic, specialty, service TO db_admin, medicitas_app;
+GRANT SELECT ON clinic, specialty, service TO db_receptionist, db_professional;
+
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
 

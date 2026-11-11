@@ -373,19 +373,43 @@ CREATE POLICY clinical_note_delete_policy ON clinical_note
     USING (false);
 
 -- --------------------------------------------------------------------
--- Least Privilege Application Role
+-- Database Roles
 -- --------------------------------------------------------------------
 DO $$
 BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'db_admin') THEN
+        CREATE ROLE db_admin;
+    END IF;
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'db_receptionist') THEN
+        CREATE ROLE db_receptionist;
+    END IF;
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'db_professional') THEN
+        CREATE ROLE db_professional;
+    END IF;
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'medicitas_app') THEN
         CREATE ROLE medicitas_app;
     END IF;
 END
 $$;
 
-GRANT USAGE ON SCHEMA public TO medicitas_app;
+DO $$
+BEGIN
+    EXECUTE format('GRANT db_admin, db_receptionist, db_professional, medicitas_app TO %I', CURRENT_USER);
+END
+$$;
+
+GRANT USAGE ON SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON working_hours, schedule_block, professional_service, appointment TO db_admin;
+
+GRANT SELECT ON working_hours, schedule_block, professional_service TO db_receptionist;
+GRANT SELECT, INSERT, UPDATE ON appointment TO db_receptionist;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON working_hours, schedule_block TO db_professional;
+GRANT SELECT ON professional_service TO db_professional;
+GRANT SELECT, UPDATE ON appointment TO db_professional;
+GRANT SELECT, INSERT, UPDATE ON clinical_note TO db_professional;
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO medicitas_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO medicitas_app;
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO medicitas_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO medicitas_app;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
 
