@@ -2,6 +2,8 @@
 // Resource ownership and tenant isolation must still be enforced by the domain and RLS.
 // Additional confirmed actions: J3 (RF14), E9 (RF15), J4 (RF19), and getAppointment.
 // J4 (RF21): clinic-wide counts are granted to clinic_admin and receptionist only.
+// E7 (RF10-RF12): reception reschedules and cancels; a professional may record the
+// outcome of their own appointments only, which the domain and RLS check.
 export const PERMISSIONS = [
   'clinic:create',
   'user:create',
@@ -17,6 +19,9 @@ export const PERMISSIONS = [
   'appointment:book',
   'appointment:read',
   'appointment:count',
+  'appointment:reschedule',
+  'appointment:cancel',
+  'appointment:record-outcome',
   'patient:create',
   'patient:read',
   'patient:update',
@@ -31,7 +36,8 @@ const clinicPermissions = [
   'user:create', 'user:deactivate', 'user:assign-role',
   'service:create', 'service:read', 'service:update', 'service:delete',
   'professional:create', 'schedule:read', 'schedule:manage', 'appointment:book',
-  'appointment:read', 'appointment:count', 'patient:create', 'patient:read', 'patient:update', 'audit:read',
+  'appointment:read', 'appointment:count', 'appointment:reschedule', 'appointment:cancel', 'appointment:record-outcome',
+  'patient:create', 'patient:read', 'patient:update', 'audit:read',
 ] as const satisfies readonly Permission[];
 
 export const ROLE_PERMISSIONS = Object.freeze({
@@ -39,11 +45,12 @@ export const ROLE_PERMISSIONS = Object.freeze({
   clinic_admin: Object.freeze(clinicPermissions),
   receptionist: Object.freeze([
     'schedule:read', 'appointment:book', 'appointment:read', 'appointment:count',
+    'appointment:reschedule', 'appointment:cancel', 'appointment:record-outcome',
     'patient:create', 'patient:read', 'patient:update',
   ] as const),
   // schedule:manage only permits the professional's own agenda, E3 checks ownership.
   professional: Object.freeze([
-    'schedule:read', 'schedule:manage', 'appointment:read', 'patient:read',
+    'schedule:read', 'schedule:manage', 'appointment:read', 'appointment:record-outcome', 'patient:read',
     'clinical-note:create', 'clinical-note:read',
   ] as const),
 } satisfies Record<string, readonly Permission[]>);
