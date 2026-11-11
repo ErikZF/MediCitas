@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@medicitas/auth": "*",
     "@medicitas/db": "*",
     "@medicitas/http": "*",
     "drizzle-orm": "^0.45.4",
