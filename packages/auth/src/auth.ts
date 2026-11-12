@@ -2,8 +2,8 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { Request, Response, NextFunction } from "express";
 import { clearVerifiedRoles, getVerifiedRoles, recordVerifiedRoles } from './verified-identity.ts';
 import { AuthConfigurationError, readAuthConfig } from './config.ts';
-
-// no se arma al importar el archivo, solo la primera vez que hace falta validar un token de verdad
+// TODO: Change file to english
+// JWKS from keycloak, we need to have them as cache, and download them once
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 let cachedJwksUrl: string | undefined;
 
@@ -55,13 +55,13 @@ export function extractTenantContext(req: Request): TenantContext | null {
 }
 
 
-// 401: valida que venga un token y que sea valido de verdad (firma, expiracion, emisor)
+// 401: TOken has to be valid
 export async function requiereToken(req: Request, res: Response, next: NextFunction) {
   clearVerifiedRoles(req);
   delete req.usuario;
   const authHeader = req.headers.authorization;
 
-  // si no viene con "Bearer " ni vale la pena intentar verificarlo
+  // If it does not have a Bearer
   if (typeof authHeader !== "string" || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ error: "falta el token de acceso" });
   }
@@ -69,8 +69,7 @@ export async function requiereToken(req: Request, res: Response, next: NextFunct
   const token = authHeader.slice("Bearer ".length);
 
   try {
-    // el issuer tiene que ser el mismo que usa el frontend para pedir el token,
-    // no la url interna de docker (esa es solo para buscar las llaves)
+    // Get config and verify with the jwks
     const config = readAuthConfig();
     const { payload } = await jwtVerify(token, obtenerJwks(config.jwksUrl), {
       issuer: config.issuer,
@@ -148,7 +147,7 @@ export async function requiereToken(req: Request, res: Response, next: NextFunct
   }
 }
 
-// 403: el token es valido pero no trae el rol que la ruta exige
+// 403: valid token, but does not have a role
 export function requiereRol(rol: string) {
   return (req: Request, res: Response, next: NextFunction) => {
     const roles = getVerifiedRoles(req);
@@ -162,7 +161,7 @@ export function requiereRol(rol: string) {
   };
 }
 
-// Requiere que el token sea valido y contenga las declaraciones de contexto multitenant (clinic_id, app_user_id, rol)
+// Token must have all attributes for the multi tenant schema: clinic_id, app_user_id, rol 
 export async function requiereTenantContext(req: Request, res: Response, next: NextFunction) {
   const proceed = () => {
     const ctx = extractTenantContext(req);
