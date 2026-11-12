@@ -2,6 +2,22 @@
   "roles": {
     "realm": [
       {
+        "name": "platform_admin",
+        "description": "Platform administrator: registers clinics, no access to clinical data"
+      },
+      {
+        "name": "clinic_admin",
+        "description": "Clinic administrator: users, professionals, services and audit log"
+      },
+      {
+        "name": "receptionist",
+        "description": "Reception: patients and appointment schedule"
+      },
+      {
+        "name": "professional",
+        "description": "Health professional: own schedule and clinical notes"
+      },
+      {
         "name": "user",
         "description": "System user"
       }
@@ -82,6 +98,64 @@
         "offline_access",
         "organization",
         "microprofile-jwt"
+      ],
+      "protocolMappers": [
+        {
+          "name": "clinic_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "clinic_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "clinic_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "app_user_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "app_user_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "app_user_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "professional_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "professional_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "professional_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "domain_role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "role",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "role",
+            "jsonType.label": "String"
+          }
+        }
       ]
     },
     {
@@ -97,10 +171,67 @@
       "consentRequired": false,
       "fullScopeAllowed": true,
       "defaultClientScopes": [
-        "profile"
-      ],
-      "optionalClientScopes": [
+        "profile",
         "roles"
+      ],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "clinic_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "clinic_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "clinic_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "app_user_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "app_user_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "app_user_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "professional_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "professional_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "professional_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "domain_role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "role",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "role",
+            "jsonType.label": "String"
+          }
+        }
       ]
     }
   ],
@@ -128,7 +259,7 @@
         "subComponents": {},
         "config": {
           "kc.user.profile.config": [
-            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"annotations\":{},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false}],\"groups\":[{\"name\":\"user-metadata\",\"displayHeader\":\"User metadata\",\"displayDescription\":\"Attributes, which refer to user metadata\"}]}"
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"annotations\":{},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"clinic_id\",\"displayName\":\"Clinic ID\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"app_user_id\",\"displayName\":\"App User ID\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"professional_id\",\"displayName\":\"Professional ID\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"role\",\"displayName\":\"Domain Role\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false}],\"groups\":[{\"name\":\"user-metadata\",\"displayHeader\":\"User metadata\",\"displayDescription\":\"Attributes, which refer to user metadata\"}]}"
           ]
         }
       }

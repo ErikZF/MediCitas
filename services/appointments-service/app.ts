@@ -1,6 +1,6 @@
 import express, { type Express } from 'express';
 import { errorHandler, notFoundHandler } from '@medicitas/http';
-import { requireTenantContext, type ContextResolver } from './http/context.ts';
+import { defaultContextResolver, requireTenantContext, type ContextResolver } from './http/context.ts';
 import { createAppointmentCountsRouter, type AppointmentCountsDeps } from './modules/appointment-counts/appointment-counts.routes.ts';
 import { createAvailabilityRouter } from './modules/availability/availability.routes.ts';
 import type { AvailabilityDeps } from './modules/availability/availability.service.ts';
@@ -11,8 +11,8 @@ import { createScheduleRouter } from './modules/schedule/schedule.routes.ts';
 import type { ScheduleDeps } from './modules/schedule/schedule.service.ts';
 
 export interface AppDeps {
-  /** Builds the tenant context from the request (the verified token in production). */
-  resolveContext: ContextResolver;
+  /** Builds the tenant context from the request (defaults to @medicitas/auth token claims in production). */
+  resolveContext?: ContextResolver;
   schedule?: ScheduleDeps;
   booking?: BookingDeps;
   appointmentCounts?: AppointmentCountsDeps;
@@ -30,7 +30,7 @@ export function createApp(deps?: AppDeps): Express {
 
   app.use(routes);
   if (deps !== undefined) {
-    const withContext = requireTenantContext(deps.resolveContext);
+    const withContext = requireTenantContext(deps.resolveContext ?? defaultContextResolver);
     if (deps.schedule !== undefined) {
       app.use('/professionals', withContext, createScheduleRouter(deps.schedule));
     }

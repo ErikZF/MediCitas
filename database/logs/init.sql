@@ -141,20 +141,35 @@ CREATE POLICY audit_log_delete_policy ON audit_log
     USING (false);
 
 -- --------------------------------------------------------------------
--- Least Privilege Application Role
+-- Database Roles
 -- --------------------------------------------------------------------
 DO $$
 BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'db_admin') THEN
+        CREATE ROLE db_admin;
+    END IF;
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'db_receptionist') THEN
+        CREATE ROLE db_receptionist;
+    END IF;
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'db_professional') THEN
+        CREATE ROLE db_professional;
+    END IF;
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'medicitas_app') THEN
         CREATE ROLE medicitas_app;
     END IF;
 END
 $$;
 
-GRANT USAGE ON SCHEMA public TO medicitas_app;
--- Strictly append-only: NO UPDATE, NO DELETE permissions granted to medicitas_app
-GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA public TO medicitas_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT ON TABLES TO medicitas_app;
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO medicitas_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO medicitas_app;
+DO $$
+BEGIN
+    EXECUTE format('GRANT db_admin, db_receptionist, db_professional, medicitas_app TO %I', CURRENT_USER);
+END
+$$;
+
+GRANT USAGE ON SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
+
+GRANT SELECT ON audit_log TO db_admin;
+GRANT SELECT, INSERT ON audit_log TO medicitas_app;
+
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
 
