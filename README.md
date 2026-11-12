@@ -1,5 +1,8 @@
 # MediCitas
 
+[![CI](https://github.com/ErikZF/MediCitas/actions/workflows/ci.yml/badge.svg)](https://github.com/ErikZF/MediCitas/actions/workflows/ci.yml)
+[![CD - Publish Images](https://github.com/ErikZF/MediCitas/actions/workflows/cd.yml/badge.svg)](https://github.com/ErikZF/MediCitas/actions/workflows/cd.yml)
+
 Plataforma SaaS multi-tenant de citas médicas (Proyecto Semestral, Etapa 1 · OLTP), construida como microservicios en Node.js + TypeScript.
 
 ## Estructura
@@ -31,4 +34,4 @@ npm test
 npm run dev -w services/edge-gateway
 ```
 
-Más detalle en [docs/api.md](docs/api.md) y [docs/database.md](docs/database.md).
+Más detalle en [docs/api.md](docs/api.md), [docs/database.md](docs/database.md) y [docs/ci-cd.md](docs/ci-cd.md).
