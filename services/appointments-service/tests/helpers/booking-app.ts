@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import type { Server } from 'node:http';
 import type { TenantContext } from '@medicitas/db';
+import type { AgendaCache } from '../../cache/agenda-cache.ts';
 import { createApp } from '../../app.ts';
 import { NotFoundError } from '../../domain/errors.ts';
 import type { ClinicCatalog, PatientDirectory } from '../../modules/booking/ports.ts';
 import type { ProfessionalDirectory } from '../../modules/schedule/schedule.service.ts';
 import { createTestDatabase } from './test-database.ts';
 
-// A running appointments-service (booking and availability) on a throwaway database,
+// A running appointments-service (schedule, booking and availability) on a throwaway database,
 // with clinics-service and users-service replaced by in-memory stand-ins.
 
 export const CLINIC_A = '0b6c2f3e-4d1a-4c8e-9f2b-7a1d3e5c9b01';
@@ -47,6 +48,8 @@ export async function startBookingApp(options: {
   maxConnections?: number;
   /** The service's clock. Defaults to 2026-01-01T00:00:00Z, before every test slot. */
   now?: () => Date;
+  /** Availability cache shared by reads and invalidations (card E8). None by default. */
+  cache?: AgendaCache;
 }): Promise<BookingApp> {
   const database = await createTestDatabase(options.adminUrl, options.label, options.maxConnections ?? 4);
 
@@ -93,8 +96,9 @@ export async function startBookingApp(options: {
       const header = req.header('x-test-context');
       return header === undefined ? null : JSON.parse(header) as TenantContext;
     },
-    booking: { db: database.db, catalog, patients, now },
-    availability: { db: database.db, catalog, directory, now },
+    booking: { db: database.db, catalog, patients, now, cache: options.cache },
+    availability: { db: database.db, catalog, directory, now, cache: options.cache },
+    schedule: { db: database.db, directory, cache: options.cache },
   });
   const server: Server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
