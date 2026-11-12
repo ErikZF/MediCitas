@@ -17,16 +17,41 @@ function obtenerJwks(url: URL) {
     return jwks;
 }
 
+export const APP_ROLES = ['platform_admin', 'clinic_admin', 'receptionist', 'professional'] as const;
+export type AppRole = (typeof APP_ROLES)[number];
+
+export interface TenantContext {
+    clinicId: string | null;
+    userId: string;
+    role: AppRole;
+    professionalId?: string | null;
+}
+
 export interface UsuarioAutenticado {
     id: string;
     username: string;
     roles: string[];
+    clinicId?: string | null;
+    userId?: string;
+    role?: AppRole;
+    professionalId?: string | null;
+    tenantContext?: TenantContext;
 }
 
 declare module "express-serve-static-core" {
     interface Request {
         usuario?: UsuarioAutenticado;
     }
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(val: unknown): val is string {
+    return typeof val === 'string' && UUID_REGEX.test(val);
+}
+
+export function extractTenantContext(req: Request): TenantContext | null {
+    return req.usuario?.tenantContext ?? null;
 }
 
 
@@ -63,10 +88,50 @@ export async function requiereToken(req: Request, res: Response, next: NextFunct
       throw new Error('Invalid token roles.');
     }
 
+    const clinicIdClaim = payload.clinic_id as string | undefined;
+    const userIdClaim = (payload.app_user_id ?? payload.user_id) as string | undefined;
+    const professionalIdClaim = payload.professional_id as string | undefined;
+
+    let domainRole: AppRole | undefined;
+    if (typeof payload.role === 'string' && (APP_ROLES as readonly string[]).includes(payload.role)) {
+      domainRole = payload.role as AppRole;
+    } else {
+      domainRole = roles.find((r): r is AppRole => (APP_ROLES as readonly string[]).includes(r));
+    }
+
+    let tenantContext: TenantContext | undefined;
+    if (domainRole && isUuid(userIdClaim)) {
+      if (domainRole === 'platform_admin' && (clinicIdClaim === undefined || clinicIdClaim === null || clinicIdClaim === '')) {
+        tenantContext = {
+          clinicId: null,
+          userId: userIdClaim,
+          role: 'platform_admin',
+        };
+      } else if (domainRole === 'professional' && isUuid(clinicIdClaim) && isUuid(professionalIdClaim)) {
+        tenantContext = {
+          clinicId: clinicIdClaim,
+          userId: userIdClaim,
+          role: 'professional',
+          professionalId: professionalIdClaim,
+        };
+      } else if ((domainRole === 'clinic_admin' || domainRole === 'receptionist') && isUuid(clinicIdClaim)) {
+        tenantContext = {
+          clinicId: clinicIdClaim,
+          userId: userIdClaim,
+          role: domainRole,
+        };
+      }
+    }
+
     req.usuario = {
       id: payload.sub,
-      username: payload.preferred_username as string,
+      username: (payload.preferred_username as string) ?? '',
       roles: [...roles],
+      clinicId: domainRole === 'platform_admin' ? null : (clinicIdClaim ?? null),
+      userId: userIdClaim,
+      role: domainRole,
+      professionalId: professionalIdClaim ?? null,
+      tenantContext,
     };
 
     next();
@@ -95,4 +160,21 @@ export function requiereRol(rol: string) {
     }
     next();
   };
+}
+
+// Requiere que el token sea valido y contenga las declaraciones de contexto multitenant (clinic_id, app_user_id, rol)
+export async function requiereTenantContext(req: Request, res: Response, next: NextFunction) {
+  const proceed = () => {
+    const ctx = extractTenantContext(req);
+    if (!ctx) {
+      return res.status(401).json({ error: 'Tenant context required.' });
+    }
+    res.locals.tenant = ctx;
+    next();
+  };
+
+  if (req.usuario) {
+    return proceed();
+  }
+  return requiereToken(req, res, proceed);
 }
