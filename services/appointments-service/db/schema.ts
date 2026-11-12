@@ -2,7 +2,7 @@
 // The source of truth is database/appointments/init.sql: tables, EXCLUDE constraints,
 // triggers and RLS policies live there, not here.
 
-import { integer, pgTable, primaryKey, smallint, text, time, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { integer, jsonb, pgTable, primaryKey, smallint, text, time, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
@@ -56,4 +56,14 @@ export const clinicalNote = pgTable('clinical_note', {
   content: text('content').notNull(),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+});
+
+export const outbox = pgTable('outbox', {
+  eventId: uuid('event_id').primaryKey().defaultRandom(),
+  clinicId: uuid('clinic_id').notNull(),
+  aggregateId: uuid('aggregate_id').notNull(),
+  eventType: varchar('event_type', { length: 64 }).notNull(),
+  payload: jsonb('payload').notNull(),
+  createdAt: timestamptz('created_at').notNull().defaultNow(),
+  publishedAt: timestamptz('published_at'),
 });

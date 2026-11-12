@@ -214,6 +214,21 @@ CREATE INDEX idx_clinical_note_appointment_id ON clinical_note (appointment_id);
 CREATE INDEX idx_clinical_note_clinic_id ON clinical_note (clinic_id);
 CREATE INDEX idx_clinical_note_professional_id ON clinical_note (professional_id);
 
+-- ---------------------------------------------------------------------
+-- outbox: Transactional outbox for domain events
+-- ---------------------------------------------------------------------
+CREATE TABLE outbox (
+    event_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    clinic_id     UUID        NOT NULL,
+    aggregate_id  UUID        NOT NULL,   -- appointment_id o professional_id
+    event_type    VARCHAR(64) NOT NULL,   -- AgendaChanged, AppointmentBooked…
+    payload       JSONB       NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_at  TIMESTAMPTZ             -- NULL = pendiente
+);
+
+CREATE INDEX idx_outbox_pending ON outbox (created_at) WHERE published_at IS NULL;
+
 -- =====================================================================
 -- Row Level Security (RLS) - Appointments Service
 -- =====================================================================
@@ -372,6 +387,21 @@ CREATE POLICY clinical_note_delete_policy ON clinical_note
     FOR DELETE
     USING (false);
 
+-- 6. outbox (Transactional outbox)
+ALTER TABLE outbox ENABLE ROW LEVEL SECURITY;
+ALTER TABLE outbox FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY outbox_insert_policy ON outbox
+    FOR INSERT
+    WITH CHECK (
+        clinic_id = app_current_clinic_id()
+        AND app_current_role() IN ('clinic_admin', 'receptionist', 'professional')
+    );
+
+CREATE POLICY outbox_delete_policy ON outbox
+    FOR DELETE
+    USING (false);
+
 -- --------------------------------------------------------------------
 -- Database Roles
 -- --------------------------------------------------------------------
@@ -401,15 +431,20 @@ $$;
 GRANT USAGE ON SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON working_hours, schedule_block, professional_service, appointment TO db_admin;
+GRANT INSERT ON outbox TO db_admin;
 
 GRANT SELECT ON working_hours, schedule_block, professional_service TO db_receptionist;
 GRANT SELECT, INSERT, UPDATE ON appointment TO db_receptionist;
+GRANT INSERT ON outbox TO db_receptionist;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON working_hours, schedule_block TO db_professional;
 GRANT SELECT ON professional_service TO db_professional;
 GRANT SELECT, UPDATE ON appointment TO db_professional;
 GRANT SELECT, INSERT, UPDATE ON clinical_note TO db_professional;
+GRANT INSERT ON outbox TO db_professional;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO medicitas_app;
+REVOKE SELECT, UPDATE, DELETE ON outbox FROM medicitas_app;
+
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
 
