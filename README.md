@@ -35,3 +35,5 @@ npm run dev -w services/edge-gateway
 ```
 
 Más detalle en [docs/api.md](docs/api.md), [docs/database.md](docs/database.md) y [docs/ci-cd.md](docs/ci-cd.md).
+
+TODO: Translate to english
