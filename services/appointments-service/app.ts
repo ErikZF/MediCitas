@@ -1,4 +1,5 @@
 import express, { type Express } from 'express';
+import { extractTenantContext, requiereToken } from '@medicitas/auth';
 import { errorHandler, notFoundHandler } from '@medicitas/http';
 import { defaultContextResolver, requireTenantContext, type ContextResolver } from './http/context.ts';
 import { createAppointmentCountsRouter, type AppointmentCountsDeps } from './modules/appointment-counts/appointment-counts.routes.ts';
@@ -6,6 +7,7 @@ import { createAvailabilityRouter } from './modules/availability/availability.ro
 import type { AvailabilityDeps } from './modules/availability/availability.service.ts';
 import { createBookingRouter } from './modules/booking/booking.routes.ts';
 import type { BookingDeps } from './modules/booking/booking.service.ts';
+import { createPatientHistoryRouter, type PatientHistoryDeps } from './modules/patient-history/patient-history.routes.ts';
 import routes from './modules/routes.ts';
 import { createScheduleRouter } from './modules/schedule/schedule.routes.ts';
 import type { ScheduleDeps } from './modules/schedule/schedule.service.ts';
@@ -17,6 +19,7 @@ export interface AppDeps {
   booking?: BookingDeps;
   appointmentCounts?: AppointmentCountsDeps;
   availability?: AvailabilityDeps;
+  patientHistory?: PatientHistoryDeps;
 }
 
 /**
@@ -42,6 +45,13 @@ export function createApp(deps?: AppDeps): Express {
     }
     if (deps.availability !== undefined) {
       app.use('/availability', withContext, createAvailabilityRouter(deps.availability));
+    }
+    if (deps.patientHistory !== undefined) {
+      // Only an explicit test/composition resolver bypasses Bearer verification.
+      const withPatientHistoryContext = deps.resolveContext === undefined
+        ? [requiereToken, requireTenantContext(extractTenantContext)]
+        : [withContext];
+      app.use('/patients', ...withPatientHistoryContext, createPatientHistoryRouter(deps.patientHistory));
     }
   }
   app.use(notFoundHandler);
