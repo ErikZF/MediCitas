@@ -60,6 +60,7 @@ El archivo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) se ejecuta 
 3. **`integration-tests` (Pruebas de base de datos y concurrencia)**:
    - Levanta un contenedor de servicio de **PostgreSQL 17** (`postgres:17-alpine`).
    - Inyecta `TEST_DATABASE_URL: postgres://test:test_password@localhost:5432/postgres`.
+   - Levanta también **Redis 7** (`redis:7-alpine`) e inyecta `TEST_REDIS_URL: redis://localhost:6379` para las pruebas de la caché de disponibilidad (E8, I8). Sin esa variable, esas pruebas se saltan.
    - Los tests crean dinámicamente una base de datos desechable (`medicitas_<label>_<pid>`), aplican el esquema real [`database/appointments/init.sql`](../database/appointments/init.sql) con extensiones (`btree_gist`), restricciones de exclusión y políticas RLS.
    - Valida:
      - Transacciones multi-inquilino (`withTenantTx`) con el rol de menor privilegio `medicitas_app`.
@@ -95,6 +96,13 @@ Para reproducir localmente las mismas pruebas de integración que ejecuta GitHub
 
    # Pruebas de integración y concurrencia de appointments-service
    TEST_DATABASE_URL=postgres://tu_user:tu_password_seguro@localhost:5433/appointments_db npm test -w services/appointments-service
+   ```
+
+3. Para incluir las pruebas de la caché de disponibilidad (E8), levantar Redis y agregar `TEST_REDIS_URL`:
+   ```bash
+   docker compose up -d redis
+
+   TEST_DATABASE_URL=postgres://tu_user:tu_password_seguro@localhost:5433/appointments_db TEST_REDIS_URL=redis://:tu_password_seguro@localhost:6379 npm test -w services/appointments-service
    ```
 
 ---

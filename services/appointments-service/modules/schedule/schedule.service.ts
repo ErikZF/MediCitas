@@ -10,6 +10,7 @@ import { MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext } f
 import { lockProfessionalAgenda } from '../../db/locks.ts';
 import { appointment, scheduleBlock, workingHours } from '../../db/schema.ts';
 import { ForbiddenError } from '../../domain/errors.ts';
+import type { AgendaCache } from '../../cache/agenda-cache.ts';
 import type { BlockInput, BlockRange, WorkingHoursInput } from './schedule.schemas.ts';
 
 /** Confirms a professional exists in the caller's clinic (owned by users-service). */
@@ -21,6 +22,8 @@ export interface ProfessionalDirectory {
 export interface ScheduleDeps {
   db: Database;
   directory: ProfessionalDirectory;
+  /** Invalidated after every COMMIT that changes an agenda (card E8). */
+  cache?: AgendaCache;
 }
 
 export interface WorkingHoursDto {
@@ -100,7 +103,7 @@ export async function replaceWorkingHours(
   // External call before the transaction: a retried transaction must not repeat it.
   await deps.directory.assertInClinic(ctx, professionalId);
 
-  return withTenantTx(deps.db, ctx, async (tx) => {
+  const saved = await withTenantTx(deps.db, ctx, async (tx) => {
     await lockProfessionalAgenda(tx, professionalId, 'exclusive');
     await tx.delete(workingHours).where(eq(workingHours.professionalId, professionalId));
     if (hours.length === 0) {
@@ -113,6 +116,10 @@ export async function replaceWorkingHours(
       .map(toWorkingHoursDto)
       .sort((a, b) => a.weekday - b.weekday || a.startTime.localeCompare(b.startTime));
   }, asApp);
+
+  // A weekly rule touches every future day: the professional's generation moves them all at once.
+  await deps.cache?.professionalChanged(ctx.clinicId as string, professionalId);
+  return saved;
 }
 
 export async function listBlocks(
@@ -148,7 +155,7 @@ export async function addBlock(
   const startsAt = new Date(input.startsAt);
   const endsAt = new Date(input.endsAt);
 
-  return withTenantTx(deps.db, ctx, async (tx) => {
+  const added = await withTenantTx(deps.db, ctx, async (tx) => {
     await lockProfessionalAgenda(tx, professionalId, 'exclusive');
 
     const [row] = await tx.insert(scheduleBlock)
@@ -174,4 +181,8 @@ export async function addBlock(
       conflicts: conflicts.map((c) => ({ ...c, startsAt: c.startsAt.toISOString(), endsAt: c.endsAt.toISOString() })),
     };
   }, asApp);
+
+  // A block can span many days: invalidate them all through the professional's generation.
+  await deps.cache?.professionalChanged(ctx.clinicId as string, professionalId);
+  return added;
 }

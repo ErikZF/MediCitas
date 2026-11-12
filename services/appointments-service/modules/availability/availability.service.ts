@@ -5,9 +5,9 @@
 // have the last word, so availability never needs a lock.
 //
 // Two steps, as in domain/availability.ts:
-//   1. loadFreeWindows: working hours minus blocks and booked appointments, per
-//      professional and day. It does not depend on the service; this is the value the
-//      Redis cache will hold (card E8).
+//   1. resolveWindows: working hours minus blocks and booked appointments, per
+//      professional and day. It does not depend on the service, so it is what the Redis
+//      cache holds (card E8): looked up first, read from PostgreSQL only on a miss.
 //   2. slotsFromWindows: the start times that fit the service duration.
 
 import { and, eq, gt, inArray, lt } from 'drizzle-orm';
@@ -17,6 +17,7 @@ import { daysInRange, freeWindows, slotsFromWindows, type Interval, type Slot } 
 import { ForbiddenError, ValidationError } from '../../domain/errors.ts';
 import { DAY_MS, localMidnightAsUtc, parseLocalDate, zonedToUtc } from '../../domain/zoned-time.ts';
 import type { ClinicCatalog } from '../booking/ports.ts';
+import type { AgendaCache } from '../../cache/agenda-cache.ts';
 import type { ProfessionalDirectory } from '../schedule/schedule.service.ts';
 import type { ProfessionalAvailabilityQuery, ServiceAvailabilityQuery } from './availability.schemas.ts';
 
@@ -26,6 +27,8 @@ export interface AvailabilityDeps {
   directory: ProfessionalDirectory;
   /** Injectable clock for tests: slots that already started are left out. */
   now?: () => Date;
+  /** Without it every read goes to PostgreSQL (CACHE_ENABLED=false). */
+  cache?: AgendaCache;
 }
 
 export interface DaySlotsDto {
@@ -120,6 +123,48 @@ async function loadFreeWindows(
   return result;
 }
 
+/**
+ * Free windows for every professional and day: from the cache when it has them, from
+ * PostgreSQL otherwise, and the cache is filled afterwards. Redis is only touched
+ * outside the transaction. `checks` runs in the same transaction as the reads.
+ */
+async function resolveWindows(
+  deps: AvailabilityDeps,
+  ctx: TenantContext,
+  professionalIds: readonly string[],
+  days: readonly string[],
+  timeZone: string,
+  checks?: (tx: Transaction) => Promise<void>,
+): Promise<FreeWindowsByDay> {
+  const clinicId = ctx.clinicId as string;
+  // The cache counters are read here, BEFORE PostgreSQL (see cache/agenda-cache.ts).
+  const lookup = deps.cache
+    ? await deps.cache.lookup(clinicId, professionalIds, days)
+    : { hits: [], misses: professionalIds.flatMap((professionalId) => days.map((date) => ({ professionalId, date, key: null }))) };
+
+  let loaded: FreeWindowsByDay = new Map();
+  if (checks || lookup.misses.length > 0) {
+    loaded = await withTenantTx(deps.db, ctx, async (tx) => {
+      if (checks) await checks(tx);
+      if (lookup.misses.length === 0) return new Map() as FreeWindowsByDay;
+      const ids = [...new Set(lookup.misses.map((m) => m.professionalId))];
+      const missingDays = [...new Set(lookup.misses.map((m) => m.date))].sort();
+      return loadFreeWindows(tx, ids, missingDays, timeZone);
+    }, asApp);
+  }
+
+  const result: FreeWindowsByDay = new Map(professionalIds.map((id) => [id, new Map()]));
+  for (const hit of lookup.hits) result.get(hit.professionalId)!.set(hit.date, hit.windows);
+  const toFill: Array<{ key: string; windows: Interval[] }> = [];
+  for (const miss of lookup.misses) {
+    const windows = loaded.get(miss.professionalId)!.get(miss.date)!;
+    result.get(miss.professionalId)!.set(miss.date, windows);
+    if (miss.key !== null) toFill.push({ key: miss.key, windows });
+  }
+  if (deps.cache) await deps.cache.fill(toFill);
+  return result;
+}
+
 /** RF7: the slots of one professional for one service on one day. */
 export async function getProfessionalAvailability(
   deps: AvailabilityDeps,
@@ -133,15 +178,14 @@ export async function getProfessionalAvailability(
   const service = await deps.catalog.getBookableService(ctx, query.serviceId);
   const days = daysInRange(query.date, query.date);
 
-  const windows = await withTenantTx(deps.db, ctx, async (tx) => {
+  const windows = await resolveWindows(deps, ctx, [professionalId], days, service.timeZone, async (tx) => {
     const offered = await tx.select({ professionalId: professionalService.professionalId }).from(professionalService)
       .where(and(eq(professionalService.professionalId, professionalId), eq(professionalService.serviceId, query.serviceId)))
       .limit(1);
     if (offered.length === 0) {
       throw new ValidationError('The professional does not offer this service.', 'service_not_offered');
     }
-    return loadFreeWindows(tx, [professionalId], days, service.timeZone);
-  }, asApp);
+  });
 
   return {
     professionalId,
@@ -163,14 +207,12 @@ export async function getServiceAvailability(
   const days = daysInRange(query.from, query.to);
   const service = await deps.catalog.getBookableService(ctx, query.serviceId);
 
-  const windows = await withTenantTx(deps.db, ctx, async (tx) => {
-    const offering = await tx.select({ professionalId: professionalService.professionalId }).from(professionalService)
-      .where(eq(professionalService.serviceId, query.serviceId));
-    if (offering.length === 0) {
-      return new Map() as FreeWindowsByDay;
-    }
-    return loadFreeWindows(tx, offering.map((row) => row.professionalId), days, service.timeZone);
-  }, asApp);
+  const offering = await withTenantTx(deps.db, ctx, (tx) => tx.select({ professionalId: professionalService.professionalId })
+    .from(professionalService)
+    .where(eq(professionalService.serviceId, query.serviceId)), asApp);
+  const windows = offering.length === 0
+    ? new Map() as FreeWindowsByDay
+    : await resolveWindows(deps, ctx, offering.map((row) => row.professionalId), days, service.timeZone);
 
   const notBefore = deps.now?.() ?? new Date();
   const professionals: ServiceAvailabilityDto['professionals'] = [];
