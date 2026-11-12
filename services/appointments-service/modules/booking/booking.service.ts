@@ -14,6 +14,7 @@ import { lockProfessionalAgenda } from '../../db/locks.ts';
 import { appointment } from '../../db/schema.ts';
 import { ForbiddenError, NotFoundError } from '../../domain/errors.ts';
 import type { BookingInput } from './booking.schemas.ts';
+import type { AgendaCache } from '../../cache/agenda-cache.ts';
 import type { ClinicCatalog, PatientDirectory } from './ports.ts';
 import { assertSlotBookable, slotFor } from './slot-rules.ts';
 
@@ -23,6 +24,8 @@ export interface BookingDeps {
   patients: PatientDirectory;
   /** Injectable clock for tests. */
   now?: () => Date;
+  /** Invalidated after every COMMIT that changes an agenda (card E8). */
+  cache?: AgendaCache;
 }
 
 export interface AppointmentDto {
@@ -66,7 +69,7 @@ export async function bookAppointment(deps: BookingDeps, ctx: TenantContext, inp
   const slot = slotFor(input.professionalId, service, new Date(input.startsAt), deps.now?.() ?? new Date());
   await deps.patients.assertInClinic(ctx, input.patientId);
 
-  return withTenantTx(deps.db, ctx, async (tx) => {
+  const booked = await withTenantTx(deps.db, ctx, async (tx) => {
     // Shared: bookings run in parallel, but never alongside a schedule change (I3).
     await lockProfessionalAgenda(tx, input.professionalId, 'shared');
     await assertSlotBookable(tx, slot);
@@ -86,6 +89,10 @@ export async function bookAppointment(deps: BookingDeps, ctx: TenantContext, inp
 
     return toAppointmentDto(row!);
   }, asApp);
+
+  // After the COMMIT and before answering 201: from here on, no reader gets the old day (I8).
+  await deps.cache?.dayChanged(ctx.clinicId as string, input.professionalId, [slot.date]);
+  return booked;
 }
 
 export async function getAppointment(deps: Pick<BookingDeps, 'db'>, ctx: TenantContext, appointmentId: string): Promise<AppointmentDto> {

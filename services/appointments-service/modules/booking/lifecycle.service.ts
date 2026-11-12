@@ -16,7 +16,9 @@ import { hasPermission, type Permission } from '@medicitas/auth';
 import { withTenantTx, type TenantContext, type Transaction } from '@medicitas/db';
 import { lockProfessionalAgenda } from '../../db/locks.ts';
 import { appointment } from '../../db/schema.ts';
+import { possibleLocalDates } from '../../cache/agenda-cache.ts';
 import { ForbiddenError, NotFoundError, TransitionError, ValidationError } from '../../domain/errors.ts';
+import { localDateOf } from '../../domain/zoned-time.ts';
 import { asApp, toAppointmentDto, type AppointmentDto, type BookingDeps } from './booking.service.ts';
 import type { CancelInput, OutcomeInput, RescheduleInput } from './lifecycle.schemas.ts';
 import { assertSlotBookable, slotFor } from './slot-rules.ts';
@@ -77,7 +79,7 @@ export async function rescheduleAppointment(
   const service = await deps.catalog.getBookableService(ctx, current.serviceId);
   const slot = slotFor(input.professionalId ?? current.professionalId, service, new Date(input.startsAt), now);
 
-  return withTenantTx(deps.db, ctx, async (tx) => {
+  const moved = await withTenantTx(deps.db, ctx, async (tx) => {
     const old = await lockAppointment(tx, appointmentId);
     assertBooked(old, 'rescheduled');
     assertNotStarted(old, now);
@@ -105,6 +107,13 @@ export async function rescheduleAppointment(
 
     return toAppointmentDto(row!);
   }, asApp);
+
+  // The old day frees a slot and the new day loses one; they may belong to two professionals.
+  // professional_id and starts_at never change, so the pre-read row names the old day.
+  const clinicId = ctx.clinicId as string;
+  await deps.cache?.dayChanged(clinicId, current.professionalId, [localDateOf(current.startsAt.getTime(), service.timeZone)]);
+  await deps.cache?.dayChanged(clinicId, slot.professionalId, [slot.date]);
+  return moved;
 }
 
 /** RF11: keeps the reason and who cancelled. The time is free again at once. */
@@ -117,7 +126,7 @@ export async function cancelAppointment(
   assertAllowed(ctx, 'appointment:cancel');
   const now = deps.now?.() ?? new Date();
 
-  return withTenantTx(deps.db, ctx, async (tx) => {
+  const cancelled = await withTenantTx(deps.db, ctx, async (tx) => {
     const row = await lockAppointment(tx, appointmentId);
     assertBooked(row, 'cancelled');
     assertNotStarted(row, now);
@@ -127,6 +136,15 @@ export async function cancelAppointment(
       .returning();
     return toAppointmentDto(updated!);
   }, asApp);
+
+  await agendaChanged(deps, ctx, cancelled);
+  return cancelled;
+}
+
+// The clinic's time zone is not at hand here (it lives in clinics-service), so the day
+// is invalidated in every zone it could be: three calendar dates around the instant.
+async function agendaChanged(deps: BookingDeps, ctx: TenantContext, changed: AppointmentDto): Promise<void> {
+  await deps.cache?.dayChanged(ctx.clinicId as string, changed.professionalId, possibleLocalDates(new Date(changed.startsAt)));
 }
 
 /** RF12: attended or no_show, only once the appointment has started. */
@@ -139,7 +157,7 @@ export async function recordOutcome(
   assertAllowed(ctx, 'appointment:record-outcome');
   const now = deps.now?.() ?? new Date();
 
-  return withTenantTx(deps.db, ctx, async (tx) => {
+  const recorded = await withTenantTx(deps.db, ctx, async (tx) => {
     // A professional reads the whole clinic's agenda but records only their own outcomes.
     // Checked before FOR UPDATE: RLS hides other professionals' rows from a locking read,
     // which would turn this 403 into a misleading 404. professional_id never changes.
@@ -161,4 +179,8 @@ export async function recordOutcome(
       .returning();
     return toAppointmentDto(updated!);
   }, asApp);
+
+  // Only booked appointments hold time: an appointment still in progress frees the rest of its slot.
+  await agendaChanged(deps, ctx, recorded);
+  return recorded;
 }
