@@ -229,6 +229,22 @@ CREATE TABLE outbox (
 
 CREATE INDEX idx_outbox_pending ON outbox (created_at) WHERE published_at IS NULL;
 
+-- ---------------------------------------------------------------------
+-- idempotency_keys: E5 - Idempotency-Key store for appointment booking
+-- ---------------------------------------------------------------------
+CREATE TABLE idempotency_keys (
+    clinic_id       UUID         NOT NULL,
+    key             VARCHAR(128) NOT NULL,
+    request_hash    VARCHAR(64)  NOT NULL,
+    response_status SMALLINT     NOT NULL,
+    response_body   JSONB        NOT NULL,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    expires_at      TIMESTAMPTZ  NOT NULL DEFAULT (now() + interval '24 hours'),
+    PRIMARY KEY (clinic_id, key)
+);
+
+CREATE INDEX idx_idempotency_keys_expires_at ON idempotency_keys (expires_at);
+
 -- =====================================================================
 -- Row Level Security (RLS) - Appointments Service
 -- =====================================================================
@@ -387,7 +403,7 @@ CREATE POLICY clinical_note_delete_policy ON clinical_note
     FOR DELETE
     USING (false);
 
--- 6. outbox (Transactional outbox)
+-- 6. outbox (Transactional outbox: app roles only INSERT per clinic; medicitas_relay reads/updates all)
 ALTER TABLE outbox ENABLE ROW LEVEL SECURITY;
 ALTER TABLE outbox FORCE ROW LEVEL SECURITY;
 
@@ -399,6 +415,28 @@ CREATE POLICY outbox_insert_policy ON outbox
     );
 
 CREATE POLICY outbox_delete_policy ON outbox
+    FOR DELETE
+    USING (false);
+
+-- 7. idempotency_keys (E5: tenant-scoped booking idempotency)
+ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE idempotency_keys FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY idempotency_keys_select_policy ON idempotency_keys
+    FOR SELECT
+    USING (
+        clinic_id = app_current_clinic_id()
+        AND app_current_role() IN ('clinic_admin', 'receptionist')
+    );
+
+CREATE POLICY idempotency_keys_insert_policy ON idempotency_keys
+    FOR INSERT
+    WITH CHECK (
+        clinic_id = app_current_clinic_id()
+        AND app_current_role() IN ('clinic_admin', 'receptionist')
+    );
+
+CREATE POLICY idempotency_keys_delete_policy ON idempotency_keys
     FOR DELETE
     USING (false);
 
@@ -419,23 +457,39 @@ BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'medicitas_app') THEN
         CREATE ROLE medicitas_app;
     END IF;
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'medicitas_relay') THEN
+        CREATE ROLE medicitas_relay;
+    END IF;
 END
 $$;
 
 DO $$
 BEGIN
-    EXECUTE format('GRANT db_admin, db_receptionist, db_professional, medicitas_app TO %I', CURRENT_USER);
+    EXECUTE format('GRANT db_admin, db_receptionist, db_professional, medicitas_app, medicitas_relay TO %I', CURRENT_USER);
 END
 $$;
 
-GRANT USAGE ON SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
+CREATE POLICY outbox_relay_select_policy ON outbox
+    FOR SELECT
+    TO medicitas_relay
+    USING (true);
+
+CREATE POLICY outbox_relay_update_policy ON outbox
+    FOR UPDATE
+    TO medicitas_relay
+    USING (true)
+    WITH CHECK (true);
+
+GRANT USAGE ON SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app, medicitas_relay;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON working_hours, schedule_block, professional_service, appointment TO db_admin;
 GRANT INSERT ON outbox TO db_admin;
+GRANT SELECT, INSERT ON idempotency_keys TO db_admin;
 
 GRANT SELECT ON working_hours, schedule_block, professional_service TO db_receptionist;
 GRANT SELECT, INSERT, UPDATE ON appointment TO db_receptionist;
 GRANT INSERT ON outbox TO db_receptionist;
+GRANT SELECT, INSERT ON idempotency_keys TO db_receptionist;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON working_hours, schedule_block TO db_professional;
 GRANT SELECT ON professional_service TO db_professional;
@@ -445,6 +499,8 @@ GRANT INSERT ON outbox TO db_professional;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO medicitas_app;
 REVOKE SELECT, UPDATE, DELETE ON outbox FROM medicitas_app;
+
+GRANT SELECT, UPDATE ON outbox TO medicitas_relay;
 
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
 

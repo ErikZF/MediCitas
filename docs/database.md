@@ -97,7 +97,8 @@ flowchart TD
   - `professional_service`: Mapping of which services each professional is eligible to perform.
   - `appointment`: Booked medical appointments. Features `EXCLUDE USING gist` constraints to prevent concurrent double-booking for both professionals and patients, as well as status transition triggers.
   - `clinical_note`: Highly sensitive medical consultation records (1:1 with attended appointments).
-  - `outbox`: Transactional outbox for domain events (`AgendaChanged`, `AppointmentBooked`, etc.) with a partial index on pending rows (`published_at IS NULL`).
+  - `outbox`: Transactional outbox for domain events (`AgendaChanged`, `AppointmentBooked`, etc.) with a partial index on pending rows (`published_at IS NULL`). App roles can only `INSERT` per clinic; `medicitas_relay` has `SELECT` and `UPDATE` across all clinics.
+  - `idempotency_keys`: Stores `Idempotency-Key` responses per clinic for booking requests (E5).
 
 ### 4. Logs Database (`logs_db`)
 - **Container:** `postgre_logs_MediCitas`
