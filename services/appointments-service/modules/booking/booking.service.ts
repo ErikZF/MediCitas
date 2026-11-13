@@ -16,7 +16,7 @@ import { ForbiddenError, NotFoundError } from '../../domain/errors.ts';
 import type { BookingInput } from './booking.schemas.ts';
 import type { AgendaCache } from '../../cache/agenda-cache.ts';
 import type { ClinicCatalog, PatientDirectory } from './ports.ts';
-import { assertSlotBookable, slotFor } from './slot-rules.ts';
+import { assertSlotBookable, assertTakesNewBookings, slotFor } from './slot-rules.ts';
 
 export interface BookingDeps {
   db: Database;
@@ -66,6 +66,7 @@ export async function bookAppointment(deps: BookingDeps, ctx: TenantContext, inp
 
   // Other services first, outside the transaction.
   const service = await deps.catalog.getBookableService(ctx, input.serviceId);
+  assertTakesNewBookings(service);
   const slot = slotFor(input.professionalId, service, new Date(input.startsAt), deps.now?.() ?? new Date());
   await deps.patients.assertInClinic(ctx, input.patientId);
 

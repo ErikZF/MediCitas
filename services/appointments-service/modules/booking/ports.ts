@@ -9,6 +9,8 @@ export interface BookableService {
   durationMinutes: number;
   /** IANA time zone of the clinic, to read working hours in local time. */
   timeZone: string;
+  /** Retired services (soft delete in clinics-service) take no new bookings. Missing means active. */
+  isActive?: boolean;
 }
 
 /** clinics-service: the service catalog and the clinic's time zone. */
