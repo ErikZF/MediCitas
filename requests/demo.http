@@ -1,0 +1,217 @@
+# MediCitas requests - VS Code REST Client (humao.rest-client); contract: docs/api.md.
+# Setup: copy .env.example to .env in this directory if .env does not exist,
+# then replace its placeholders locally. Never commit tokens or other secrets.
+# Send one request at a time; mutate only your own disposable environment.
+# NOT EXECUTED: all responses below are expected, not observed.
+# HEALTH: needs a running service; does not establish dependency readiness.
+# APPT: PENDING VALIDATION - routes exist but normal startup does not mount them;
+# requires dependencies/adapters as applicable, database access and seed identities.
+# RF16 verifies Bearer when mounted; other appointments routes need auth wiring.
+# AUDIT: PENDING VALIDATION - RF19 has normal startup; needs logs DB/JWT config
+# and valid seed-role tokens for authenticated calls. No seed login is provided yet.
+# Compose has no HTTP services; gateway does not proxy. Use direct service URLs.
+# reserveA/rescheduleA response IDs use the latest response; require a successful
+# 201 first. Stop on unexpected responses or unresolved variables; do not resend
+# bookings to recover IDs. Syntax: https://github.com/Huachao/vscode-restclient#request-variables
+
+@gatewayUrl = {{$dotenv DEMO_GATEWAY_URL}}
+@clinicsUrl = {{$dotenv DEMO_CLINICS_URL}}
+@usersUrl = {{$dotenv DEMO_USERS_URL}}
+@appointmentsUrl = {{$dotenv DEMO_APPOINTMENTS_URL}}
+@auditUrl = {{$dotenv DEMO_AUDIT_URL}}
+
+@platformAdminToken = {{$dotenv DEMO_PLATFORM_ADMIN_TOKEN}}
+@clinicAdminToken = {{$dotenv DEMO_CLINIC_ADMIN_TOKEN}}
+@receptionistToken = {{$dotenv DEMO_RECEPTIONIST_TOKEN}}
+@professionalToken = {{$dotenv DEMO_PROFESSIONAL_TOKEN}}
+
+@professionalId = {{$dotenv DEMO_PROFESSIONAL_ID}}
+@patientId = {{$dotenv DEMO_PATIENT_ID}}
+@conflictPatientId = {{$dotenv DEMO_CONFLICT_PATIENT_ID}}
+@serviceId = {{$dotenv DEMO_SERVICE_ID}}
+@auditUserId = {{$dotenv DEMO_AUDIT_USER_ID}}
+@startedAppointmentId = {{$dotenv DEMO_STARTED_APPOINTMENT_ID}}
+@appointmentAId = {{reserveA.response.body.$.appointmentId}}
+@replacementAId = {{rescheduleA.response.body.$.appointmentId}}
+
+@dayFrom = {{$dotenv DEMO_DAY_FROM}}
+@dayTo = {{$dotenv DEMO_DAY_TO}}
+@rangeFrom = {{$dotenv DEMO_RANGE_FROM}}
+@rangeTo = {{$dotenv DEMO_RANGE_TO}}
+@startsA = {{$dotenv DEMO_STARTS_A}}
+@replacementStartsA = {{$dotenv DEMO_REPLACEMENT_STARTS_A}}
+
+### 01 - Gateway root [HEALTH]
+# Expected: 200, text Hello World!; no forwarding.
+GET {{gatewayUrl}}/
+
+### 02 - Gateway health [HEALTH]
+# Expected: 200 {"status":"ok"}.
+GET {{gatewayUrl}}/health
+
+### 03 - Clinics health [HEALTH]
+# Expected: 200, status ok and service clinics-service.
+GET {{clinicsUrl}}/health
+
+### 04 - Users health [HEALTH]
+# Expected: 200, status ok and service users-service.
+GET {{usersUrl}}/health
+
+### 05 - Appointments health [HEALTH]
+# Expected: 200, status ok and service appointments-service.
+GET {{appointmentsUrl}}/health
+
+### 06 - Audit health [HEALTH]
+# Expected: 200, status ok and service audit-service; startup needs DB_LOGS config.
+GET {{auditUrl}}/health
+
+### 07 - RF19 without Bearer [AUDIT]
+# Expected: 401 once audit starts; no token needed.
+GET {{auditUrl}}/audit/logs
+
+### 08 - Reception cannot read audit [AUDIT]
+# Expected: 403 forbidden with a valid receptionist token; invalid/expired: 401.
+GET {{auditUrl}}/audit/logs
+Authorization: Bearer {{receptionistToken}}
+
+### 09 - Platform admin cannot read clinical audit [AUDIT]
+# Expected: 403 forbidden with valid platform_admin token/context (clinic null).
+GET {{auditUrl}}/audit/logs
+Authorization: Bearer {{platformAdminToken}}
+
+### 10 - RF5 working hours [APPT]
+# Role: professional. Expected: 200 { workingHours }.
+GET {{appointmentsUrl}}/professionals/{{professionalId}}/working-hours
+Authorization: Bearer {{professionalToken}}
+
+### 11 - RF6 overlapping blocks [APPT]
+# Role: receptionist. Expected: 200 { blocks }; query values are percent-encoded.
+GET {{appointmentsUrl}}/professionals/{{professionalId}}/blocks?from={{%rangeFrom}}&to={{%rangeTo}}
+Authorization: Bearer {{receptionistToken}}
+
+### 12 - RF16 patient history [APPT]
+# Role: professional. Expected: 200 array or []; no date filters.
+GET {{appointmentsUrl}}/patients/{{patientId}}/appointments
+Authorization: Bearer {{professionalToken}}
+
+### 13 - RF21 counts by current status [APPT]
+# Role: receptionist. Expected: 200 { counts, total }, by startsAt in [from, to).
+GET {{appointmentsUrl}}/appointments/counts?from={{%rangeFrom}}&to={{%rangeTo}}
+Authorization: Bearer {{receptionistToken}}
+
+### 14 - RF19 filtered audit [AUDIT]
+# Role: clinic_admin. Expected: 200 array or []; AND filters, bounds on occurredAt.
+GET {{auditUrl}}/audit/logs?userId={{auditUserId}}&patientId={{patientId}}&from={{%rangeFrom}}&to={{%rangeTo}}
+Authorization: Bearer {{clinicAdminToken}}
+
+### 15 - RF8 availability by service [APPT]
+# Role: receptionist. Expected: 200 with professionals/days, including both dates.
+GET {{appointmentsUrl}}/availability?serviceId={{serviceId}}&from={{dayFrom}}&to={{dayTo}}
+Authorization: Bearer {{receptionistToken}}
+
+### 16 - RF7 availability by professional/day [APPT]
+# Role: receptionist. Expected: 200 with slots or []; select future free starts.
+GET {{appointmentsUrl}}/availability/professionals/{{professionalId}}?serviceId={{serviceId}}&date={{dayFrom}}
+Authorization: Bearer {{receptionistToken}}
+
+### 17 - RF9 reserve A [APPT]
+# Role: receptionist. Expected: 201 booked; ID feeds appointmentAId automatically.
+# Requires a free future startsA. No Idempotency-Key support; send once.
+# @name reserveA
+POST {{appointmentsUrl}}/appointments
+Authorization: Bearer {{receptionistToken}}
+Content-Type: application/json
+
+{
+  "professionalId": "{{professionalId}}",
+  "patientId": "{{patientId}}",
+  "serviceId": "{{serviceId}}",
+  "startsAt": "{{startsA}}"
+}
+
+### 18 - Read A [APPT]
+# Role: receptionist. After successful reserveA: expected 200 Appointment, booked.
+GET {{appointmentsUrl}}/appointments/{{appointmentAId}}
+Authorization: Bearer {{receptionistToken}}
+
+### 19 - RF9 occupied professional slot [APPT]
+# Role: receptionist. Expected: 409 slot_taken after 17, before A is released.
+# startsA must still be future; conflictPatientId is a different valid patient free then.
+POST {{appointmentsUrl}}/appointments
+Authorization: Bearer {{receptionistToken}}
+Content-Type: application/json
+
+{
+  "professionalId": "{{professionalId}}",
+  "patientId": "{{conflictPatientId}}",
+  "serviceId": "{{serviceId}}",
+  "startsAt": "{{startsA}}"
+}
+
+### 20 - RF9 forbidden duration field [APPT]
+# Role: receptionist. Expected: 422 invalid_request; strict body rejects durationMinutes.
+POST {{appointmentsUrl}}/appointments
+Authorization: Bearer {{receptionistToken}}
+Content-Type: application/json
+
+{
+  "professionalId": "{{professionalId}}",
+  "patientId": "{{patientId}}",
+  "serviceId": "{{serviceId}}",
+  "startsAt": "{{startsA}}",
+  "durationMinutes": 60
+}
+
+### 21 - RF10 reschedule A [APPT]
+# Role: receptionist. A and replacementStartsA must be future; new slot must be free.
+# Expected: 201 new booked Appointment; ID feeds replacementAId, old A is rescheduled.
+# @name rescheduleA
+POST {{appointmentsUrl}}/appointments/{{appointmentAId}}/reschedule
+Authorization: Bearer {{receptionistToken}}
+Content-Type: application/json
+
+{
+  "startsAt": "{{replacementStartsA}}"
+}
+
+### 22 - Read replacement [APPT]
+# Role: receptionist. After successful rescheduleA: expected 200 booked, rescheduledFromId=A.
+GET {{appointmentsUrl}}/appointments/{{replacementAId}}
+Authorization: Bearer {{receptionistToken}}
+
+### 23 - RF11 cancel replacement [APPT]
+# Role: receptionist. Requires booked and not started. Expected: 200 cancelled (final).
+POST {{appointmentsUrl}}/appointments/{{replacementAId}}/cancel
+Authorization: Bearer {{receptionistToken}}
+Content-Type: application/json
+
+{
+  "reason": "Demo cancellation"
+}
+
+### 24 - Read cancelled replacement [APPT]
+# Role: receptionist. Expected: 200 cancelled, with cancelReason; cannot become attended.
+GET {{appointmentsUrl}}/appointments/{{replacementAId}}
+Authorization: Bearer {{receptionistToken}}
+
+### 25 - Check a separate, already-started appointment [APPT]
+# Role: professional. Expected: 200; verify booked, startsAt <= now and own professionalId.
+# startedAppointmentId must exist in demo data; it is NOT A or its cancelled replacement.
+GET {{appointmentsUrl}}/appointments/{{startedAppointmentId}}
+Authorization: Bearer {{professionalToken}}
+
+### 26 - RF12 record outcome on the already-started appointment [APPT]
+# Role: professional, own appointment only. Expected: 200 attended; no_show is an alternative.
+# Requires 25's conditions. Before start: 422 appointment_not_started; final state: 409 invalid_transition.
+POST {{appointmentsUrl}}/appointments/{{startedAppointmentId}}/outcome
+Authorization: Bearer {{professionalToken}}
+Content-Type: application/json
+
+{
+  "outcome": "attended"
+}
+
+### 27 - Read recorded outcome [APPT]
+# Role: professional. After 26 succeeds: expected 200 Appointment, attended.
+GET {{appointmentsUrl}}/appointments/{{startedAppointmentId}}
+Authorization: Bearer {{professionalToken}}
