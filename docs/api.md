@@ -38,7 +38,8 @@ prefix or gateway proxy to them yet. A route implemented and tested through
 | appointments: booking, retrieval and lifecycle (RF9-RF13) | Yes | `booking: { db, catalog, patients }` | No | No end-to-end path |
 | appointments: patient history (RF16) | Yes | `patientHistory: { db }` | No | No end-to-end path |
 | appointments: clinical note (RF15) and its audit events (RF18 producer) | Yes | `clinicalNotes: { db }` | No | No end-to-end path |
-| appointments: counts (RF21) | Yes | `appointmentCounts: { db }` | No | No end-to-end path |
+| appointments: daily agenda (RF20) | Yes | `dailyAgenda: { db, clinics }` | Yes: appointments DB, `CLINICS_SERVICE_URL` and verified Bearer | No end-to-end path |
+| appointments: counts (RF21) | Yes | `appointmentCounts: { db }` | Yes: same appointments startup and verified Bearer | No end-to-end path |
 | audit: log query (RF19) | Yes | `auditQuery: { db }` | Yes: creates a logs database connection and requires Bearer | No end-to-end path |
 
 RF4 service associations remain pending. Appointments still needs
@@ -48,7 +49,7 @@ PostgreSQL, Keycloak and Redis, without HTTP services.
 ## Identity, permissions and shared formats
 
 - RF3 and the RF4 routes below verify Bearer and derive tenant context from it.
-- RF16 and RF19 verify `Authorization: Bearer <access_token>` when mounted without
+- RF16, RF19, RF20 and RF21 verify `Authorization: Bearer <access_token>` when mounted without
   a `resolveContext` override. MediCitas has no login endpoint.
 - **Other appointments routes do not run `requiereToken` yet.** Mounting them and
   sending Bearer alone is insufficient: authentication must be wired first.
@@ -325,6 +326,25 @@ or one with appointments only in another clinic.
 404 `not_found` for a malformed route UUID. Bearer/context errors follow the shared
 rules. There are no date filters, pagination or history of status changes.
 
+## Daily agenda (appointments-service, RF20)
+
+| Method and route | Access |
+| --- | --- |
+| `GET /agenda?date=YYYY-MM-DD` | clinic_admin, receptionist |
+| `GET /agenda/professionals/:professionalId?date=YYYY-MM-DD` | clinic_admin, receptionist; professional for own ID only |
+
+Both require verified Bearer and exactly one valid calendar `date`, in the clinic's
+stored IANA zone. `CLINICS_SERVICE_URL` supplies `GET /clinic/time-zone` using the
+same Bearer; clinic/role/zone cannot be selected through query fields or headers.
+200 returns `{ date, timeZone, professionalId: UUID|null, appointments: [...] }`;
+each entry has `{ appointmentId, professionalId, patientId, serviceId, startsAt,
+endsAt, status }`, with UTC timestamps. All current states and intervals overlapping
+the local day are included, ordered by start, professional ID, then appointment ID.
+No visible rows returns `appointments: []`, including an unknown/other-clinic
+professional. Shared 401/403 apply; malformed authorized route IDs return 404,
+invalid/extra query fields return 422, and unavailable/invalid clinic settings
+return 503 `clinic_unavailable`.
+
 ## Counts by status (appointments-service, RF21)
 
 `GET /appointments/counts?from=<instant>&to=<instant>`, with no body.
@@ -409,4 +429,4 @@ mocked dependencies, without full-stack Keycloak/gateway validation. Coverage
 details belong to J7. RF4 registration is implemented; its service-assignment
 contract remains pending. No operational HTTP contract exists yet for RF1-RF2,
 **RF14** (patient registration/update), RF18 (the relay that copies audit events
-into `logs_db`) or **RF20** (daily agenda).
+into `logs_db`).
