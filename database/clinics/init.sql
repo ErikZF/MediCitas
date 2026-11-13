@@ -90,6 +90,7 @@ CREATE TABLE service (
     specialty_id     UUID NOT NULL REFERENCES specialty (specialty_id),
     name             VARCHAR(128) NOT NULL,
     duration_minutes INT  NOT NULL CHECK (duration_minutes > 0),
+    is_active        BOOLEAN NOT NULL DEFAULT TRUE,
     UNIQUE (clinic_id, name)
 );
 
@@ -184,6 +185,7 @@ $$;
 GRANT USAGE ON SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON clinic, specialty, service TO db_admin, medicitas_app;
+REVOKE DELETE ON TABLE public.service FROM medicitas_app;
 GRANT SELECT ON clinic, specialty, service TO db_receptionist, db_professional;
 
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
