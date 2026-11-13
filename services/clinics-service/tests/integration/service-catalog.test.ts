@@ -169,6 +169,19 @@ describe.skipIf(!url)('RF3 through normal clinics-service startup', () => {
     });
   }
 
+  test('global specialties use the real catalog and require professional:create', async () => {
+    const response = await fetch(`${base}/specialties`, { headers: { authorization: `Bearer ${adminToken}` } });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), [
+      { specialtyId: otherSpecialty, name: 'Cardiología' },
+      { specialtyId: specialty, name: 'Medicina general' },
+    ]);
+    const denied = await fetch(`${base}/specialties`, { headers: { authorization: `Bearer ${receptionToken}` } });
+    assert.equal(denied.status, 403);
+    assert.deepEqual(await denied.json(), { error: 'Request rejected.', code: 'forbidden' });
+    assert.equal((await fetch(`${base}/specialties`)).status, 401);
+  });
+
   test('CRUD persists editable attributes and exposes specialty/time zone', async () => {
     const created = await request('', 'POST', { ...input, name: `  ${input.name}  ` });
     assert.equal(created.status, 201);
