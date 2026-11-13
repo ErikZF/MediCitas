@@ -31,6 +31,8 @@ prefix or gateway proxy to them yet. A route implemented and tested through
 | --- | --- | --- | --- | --- |
 | All five services: `GET /health`; gateway: `GET /` | Yes | None to mount health | Yes, if the service starts successfully | Compose has no HTTP services; gateway only serves its two routes |
 | clinics: service catalog (RF3) | Yes | `serviceCatalog: { db }` | Yes: clinics DB and verified Bearer | No end-to-end path |
+| clinics: specialties (RF4 reference data) | Yes | `serviceCatalog: { db }` | Yes: same clinics DB and Bearer verification | No end-to-end path |
+| users: professional registration (RF4 partial) | Yes | `professionals: { db, specialties }` | Yes: users DB, `CLINICS_SERVICE_URL` and verified Bearer | No end-to-end path |
 | appointments: working hours and blocks (RF5-RF6) | Yes | `schedule: { db, directory }` | No | No end-to-end path |
 | appointments: availability (RF7-RF8) | Yes | `availability: { db, catalog, directory }` | No | No end-to-end path |
 | appointments: booking, retrieval and lifecycle (RF9-RF13) | Yes | `booking: { db, catalog, patients }` | No | No end-to-end path |
@@ -39,13 +41,13 @@ prefix or gateway proxy to them yet. A route implemented and tested through
 | appointments: counts (RF21) | Yes | `appointmentCounts: { db }` | No | No end-to-end path |
 | audit: log query (RF19) | Yes | `auditQuery: { db }` | Yes: creates a logs database connection and requires Bearer | No end-to-end path |
 
-`users-service` only exposes health. Appointments still needs
+RF4 service associations remain pending. Appointments still needs
 real catalog/directory adapters and startup wiring. Compose currently starts
 PostgreSQL, Keycloak and Redis, without HTTP services.
 
 ## Identity, permissions and shared formats
 
-- RF3 always verifies Bearer and derives its tenant context from the token.
+- RF3 and the RF4 routes below verify Bearer and derive tenant context from it.
 - RF16 and RF19 verify `Authorization: Bearer <access_token>` when mounted without
   a `resolveContext` override. MediCitas has no login endpoint.
 - **Other appointments routes do not run `requiereToken` yet.** Mounting them and
@@ -67,7 +69,7 @@ PostgreSQL, Keycloak and Redis, without HTTP services.
 - Availability dates use `YYYY-MM-DD` in the clinic's IANA time zone.
   Appointment and block intervals are `[start, end)`: back-to-back appointments
   do not overlap. The RF8 calendar-date range includes both endpoints.
-- RF3, booking, rescheduling, cancellation, outcome, RF19 and RF21 use strict objects:
+- RF3, professional registration, booking, rescheduling, cancellation, outcome, RF19 and RF21 use strict objects:
   extra fields produce 422. Working-hours, block and availability schemas strip
   unknown fields; those fields cannot change the clinic. RF16 consumes no query
   filters.
@@ -89,8 +91,9 @@ No authentication, parameters or body; successful response: 200.
 | appointments-service | `GET /health` | `{"status":"ok","service":"appointments-service"}` |
 | audit-service | `GET /health` | `{"status":"ok","service":"audit-service"}` |
 
-Health does not check PostgreSQL, Keycloak or Redis readiness. Clinics and audit need valid
-database configuration to start normally, even to serve health.
+Health does not check PostgreSQL, Keycloak or Redis readiness. Clinics, users and audit
+need valid database configuration to start normally, even to serve health.
+Users also requires `CLINICS_SERVICE_URL`.
 
 ## Service catalog (clinics-service, RF3)
 
@@ -115,10 +118,38 @@ Extra fields or any query return 422 `invalid_request`; missing specialties retu
 (409 `duplicate`). Malformed, unknown or other-clinic IDs return 404 `not_found`.
 
 Retirement does not change appointments or `professional_service` associations.
-RF4 and the appointments catalog adapter remain pending: rejecting new bookings
+RF4 service associations and the appointments catalog adapter remain pending: rejecting new bookings
 of inactive services while allowing their lookup for rescheduling is not wired.
 Internal catalog authorization is also pending; this administrative read returns
 403 for receptionist/professional tokens.
+
+## Professional registration (RF4 partial)
+
+Both routes require `clinic_admin` with `professional:create`. The specialties
+catalog supports registration without granting service-management permissions.
+
+| Owner | Method and route | Input | Successful output |
+| --- | --- | --- | --- |
+| clinics | `GET /specialties` | No query | 200 `[{ specialtyId, name }]`, global, ordered by name then ID |
+| users | `POST /professionals` | `{ appUserId, fullName, specialtyIds }` | 201 `{ professionalId, appUserId, fullName, isActive: true, specialtyIds }` |
+
+The body is strict: UUID appUserId, trimmed fullName of 1-128 characters, and a
+nonempty array of distinct specialty UUIDs. No query parameters are accepted.
+The existing app_user must be active, have role `professional` and belong to the
+verified context's clinic. Users validates specialties through clinics before
+its local transaction; the existing app_user and Keycloak account are unchanged.
+Output specialtyIds are sorted canonical UUIDs. There is no profile-edit route.
+
+Unknown/other-clinic users return 404 `not_found`; inactive/wrong-role users return
+422 `invalid_professional_user`; unknown specialties return 422 `invalid_reference`;
+invalid input returns 422 `invalid_request`; an existing profile returns 409
+`duplicate`. Catalog failure, invalid response or its 5-second timeout returns
+503 `catalog_unavailable` without local writes. Shared 401/403/errors also apply.
+
+`CLINICS_SERVICE_URL` is the reachable clinics base URL. The client forwards the
+original Bearer; both services verify it independently, so issuer/audience must
+be valid for both. RF4 service assignment and specialty coverage checks remain
+pending; registration does not provision identities or update Keycloak claims.
 
 ## Working hours and blocks (appointments-service, RF5-RF6)
 
@@ -375,6 +406,7 @@ no real tokens or secrets belong in Git.
 Cross-checked against code and existing tests; **no requests or tests were executed
 during J5 stage 1**. Existing tests have partial scopes, including PostgreSQL and
 mocked dependencies, without full-stack Keycloak/gateway validation. Coverage
-details belong to J7. No operational HTTP contract exists yet for RF1-RF2, RF4,
+details belong to J7. RF4 registration is implemented; its service-assignment
+contract remains pending. No operational HTTP contract exists yet for RF1-RF2,
 **RF14** (patient registration/update), RF18 (the relay that copies audit events
 into `logs_db`) or **RF20** (daily agenda).
