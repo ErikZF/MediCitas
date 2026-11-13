@@ -6,6 +6,11 @@ export const clinic = pgTable('clinic', {
   timeZone: text('time_zone').notNull(),
 });
 
+export const specialty = pgTable('specialty', {
+  specialtyId: uuid('specialty_id').primaryKey(),
+  name: varchar('name', { length: 128 }).notNull(),
+});
+
 export const service = pgTable('service', {
   serviceId: uuid('service_id').primaryKey().defaultRandom(),
   clinicId: uuid('clinic_id').notNull(),
