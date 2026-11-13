@@ -25,6 +25,16 @@ export interface Slot {
   timeZone: string;
 }
 
+/**
+ * A retired service (soft-deleted in clinics-service) takes no new bookings and shows
+ * no availability. Rescheduling an existing appointment of it is still allowed.
+ */
+export function assertTakesNewBookings(service: BookableService): void {
+  if (service.isActive === false) {
+    throw new ValidationError('The service is no longer offered.', 'service_inactive');
+  }
+}
+
 /** I4: the end comes from the service, never from the request. */
 export function slotFor(professionalId: string, service: BookableService, startsAt: Date, now: Date): Slot {
   if (startsAt.getTime() <= now.getTime()) {

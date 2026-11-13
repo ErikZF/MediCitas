@@ -17,6 +17,7 @@ import { daysInRange, freeWindows, slotsFromWindows, type Interval, type Slot } 
 import { ForbiddenError, ValidationError } from '../../domain/errors.ts';
 import { DAY_MS, localMidnightAsUtc, parseLocalDate, zonedToUtc } from '../../domain/zoned-time.ts';
 import type { ClinicCatalog } from '../booking/ports.ts';
+import { assertTakesNewBookings } from '../booking/slot-rules.ts';
 import type { AgendaCache } from '../../cache/agenda-cache.ts';
 import type { ProfessionalDirectory } from '../schedule/schedule.service.ts';
 import type { ProfessionalAvailabilityQuery, ServiceAvailabilityQuery } from './availability.schemas.ts';
@@ -176,6 +177,7 @@ export async function getProfessionalAvailability(
   // Other services first, outside the transaction.
   await deps.directory.assertInClinic(ctx, professionalId);
   const service = await deps.catalog.getBookableService(ctx, query.serviceId);
+  assertTakesNewBookings(service);
   const days = daysInRange(query.date, query.date);
 
   const windows = await resolveWindows(deps, ctx, [professionalId], days, service.timeZone, async (tx) => {
@@ -206,6 +208,7 @@ export async function getServiceAvailability(
   assertCanRead(ctx);
   const days = daysInRange(query.from, query.to);
   const service = await deps.catalog.getBookableService(ctx, query.serviceId);
+  assertTakesNewBookings(service);
 
   const offering = await withTenantTx(deps.db, ctx, (tx) => tx.select({ professionalId: professionalService.professionalId })
     .from(professionalService)

@@ -1,6 +1,5 @@
 import type { Request, RequestHandler, Response } from 'express';
 import type { TenantContext } from '@medicitas/db';
-import { extractTenantContext } from '@medicitas/auth';
 
 /**
  * Builds the tenant context of a request. In production it reads the verified token
@@ -8,11 +7,6 @@ import { extractTenantContext } from '@medicitas/auth';
  * Returns null when the request carries no usable identity.
  */
 export type ContextResolver = (req: Request) => TenantContext | null;
-
-/** Default context resolver extracting tenant claims from verified @medicitas/auth token. */
-export const defaultContextResolver: ContextResolver = (req: Request): TenantContext | null => {
-  return extractTenantContext(req) as TenantContext | null;
-};
 
 /** 401 when the request has no identity; otherwise stores the context for the handlers. */
 export function requireTenantContext(resolve: ContextResolver): RequestHandler {
