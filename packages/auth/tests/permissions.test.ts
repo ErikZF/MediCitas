@@ -19,7 +19,7 @@ const policy: Record<PermissionRole, readonly Permission[]> = {
   ],
   professional: [
     'schedule:read', 'schedule:manage', 'appointment:read', 'appointment:record-outcome', 'patient:read',
-    'clinical-note:create', 'clinical-note:read',
+    'clinical-note:create', 'clinical-note:read', 'clinical-note:update',
   ],
 };
 
