@@ -1,5 +1,7 @@
 # The purpose of this .md
 
+**English** · [Español](database-comparison.es.md)
+
 To establish the architectural decisión, of why we used RLS,
 For this, the assignment requested to compare between strategies
 that could guarantee the separation of the data between clinics,

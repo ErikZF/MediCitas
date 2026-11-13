@@ -1,5 +1,7 @@
 # @medicitas/db
 
+**English** · [Español](README.es.md)
+
 Shared data layer for the MediCitas microservices (card E1), built on Drizzle over `pg`.
 
 It solves three things no service should reimplement:
@@ -43,7 +45,7 @@ SET LOCAL ROLE "medicitas_app";                   -- only when dbRoles is given
 COMMIT;
 ```
 
-`app_set_session_context` is defined by every `database/*/init.sql` next to its RLS policies. It fills `app.current_clinic_id`, `app.current_user_id`, `app.current_role` and `app.current_professional_id`, which the helper functions `app_current_clinic_id()`, `app_current_role()`, etc. read. The variable names therefore live in one place, the schema; see `docs/database.md`.
+`app_set_session_context` is defined by every `database/*/init.sql` next to its RLS policies. It fills `app.current_clinic_id`, `app.current_user_id`, `app.current_role` and `app.current_professional_id`, which the helper functions `app_current_clinic_id()`, `app_current_role()`, etc. read. The variable names therefore live in one place, the schema; see [docs/database.md](../../docs/database.md).
 
 **Isolation level: READ COMMITTED.** It is enough because the guarantee against double booking comes from the exclusion constraint, not from read visibility. A use case can ask for another level with `isolationLevel`.
 

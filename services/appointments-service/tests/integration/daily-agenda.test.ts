@@ -219,6 +219,8 @@ describe.skipIf(!url)('RF20 daily agenda with real PostgreSQL and HTTP identity'
         DB_APPOINTMENTS_USER: decodeURIComponent(target.username),
         DB_APPOINTMENTS_PASSWORD: decodeURIComponent(target.password),
         CLINICS_SERVICE_URL: clinicsBase,
+        // server.ts now wires every module; RF20/RF21 never call users-service.
+        USERS_SERVICE_URL: clinicsBase,
       };
       delete env.NODE_OPTIONS;
       delete env.TEST_DATABASE_URL;

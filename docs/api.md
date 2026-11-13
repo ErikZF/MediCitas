@@ -1,12 +1,14 @@
 # MediCitas API contract (J5)
 
+**English** · [Español](api.es.md)
+
 ## API architecture
 
 Domain routes use HTTP/JSON and are grouped by responsibility: appointments
 contains scheduling, booking and appointment queries; audit reads the separate
 log database. Booking obtains catalog and patient information through injected
 dependencies before its database transaction, keeping external lookups outside
-that transaction. Their real service adapters still need to be connected.
+that transaction. Some of the endpoints those adapters call are still pending (see below).
 
 Identity is delegated to Keycloak so the domain API does not manage login or
 credentials. Where Bearer verification is wired, the service derives the clinic
@@ -34,27 +36,36 @@ prefix or gateway proxy to them yet. A route implemented and tested through
 | clinics: specialties (RF4 reference data) | Yes | `serviceCatalog: { db }` | Yes: same clinics DB and Bearer verification | No end-to-end path |
 | users: professional registration (RF4 partial) | Yes | `professionals: { db, specialties }` | Yes: users DB, `CLINICS_SERVICE_URL` and verified Bearer | No end-to-end path |
 | users: patient registration/update and membership (RF14 partial) | Yes | `patients: { db }` | Yes: same users startup and verified Bearer | No end-to-end path |
-| appointments: working hours and blocks (RF5-RF6) | Yes | `schedule: { db, directory }` | No | No end-to-end path |
-| appointments: availability (RF7-RF8) | Yes | `availability: { db, catalog, directory }` | No | No end-to-end path |
-| appointments: booking, retrieval and lifecycle (RF9-RF13) | Yes | `booking: { db, catalog, patients }` | No | No end-to-end path |
-| appointments: patient history (RF16) | Yes | `patientHistory: { db }` | Yes: same appointments startup and verified Bearer | No end-to-end path |
-| appointments: clinical note (RF15) and its audit events (RF18 producer) | Yes | `clinicalNotes: { db }` | No | No end-to-end path |
+| appointments: working hours and blocks (RF5-RF6) | Yes | `schedule: { db, directory }` | Yes: appointments DB, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` and verified Bearer | No end-to-end path |
+| appointments: availability (RF7-RF8) | Yes | `availability: { db, catalog, directory }` | Yes: appointments DB, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` and verified Bearer; Redis cache when `REDIS_URL` is set | No end-to-end path |
+| appointments: booking, retrieval and lifecycle (RF9-RF13) | Yes | `booking: { db, catalog, patients }` | Yes: appointments DB, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` and verified Bearer | No end-to-end path |
+| appointments: patient history (RF16) | Yes | `patientHistory: { db }` | Yes: appointments DB and verified Bearer | No end-to-end path |
+| appointments: clinical note (RF15) and its audit events (RF18 producer) | Yes | `clinicalNotes: { db }` | Yes: appointments DB and verified Bearer | No end-to-end path |
 | appointments: daily agenda (RF20) | Yes | `dailyAgenda: { db, clinics }` | Yes: appointments DB, `CLINICS_SERVICE_URL` and verified Bearer | No end-to-end path |
 | appointments: counts (RF21) | Yes | `appointmentCounts: { db }` | Yes: same appointments startup and verified Bearer | No end-to-end path |
 | audit: log query (RF19) | Yes | `auditQuery: { db }` | Yes: creates a logs database connection and requires Bearer | No end-to-end path |
 
-RF4 service associations remain pending. Appointments still needs
-real catalog/directory adapters and startup wiring. Compose currently starts
+RF4 service associations remain pending. Compose currently starts
 PostgreSQL, Keycloak and Redis, without HTTP services.
+
+**appointments-service dependencies.** Booking, availability and schedules call
+other services with the caller's Bearer token, before any transaction opens:
+
+| Call | Used for | Status today |
+| --- | --- | --- |
+| clinics `GET /services/:serviceId` | Duration, clinic time zone and `isActive` | Exists, but returns 403 to receptionist and professional tokens |
+| users `GET /professionals/:professionalId` | The professional belongs to the clinic | Not implemented yet |
+| users `GET /patients/:patientId` | The patient belongs to the clinic; only `patientId` is read | Implemented (RF14): 200 `{ patientId }`; end-to-end validation pending |
+
+A 404 from those services is answered as 404. Any other failure (403, 5xx,
+timeout, unusable body) is answered as 503 `dependency_unavailable`.
 
 ## Identity, permissions and shared formats
 
 - RF3 and the RF4 routes below verify Bearer and derive tenant context from it.
-- RF16, RF19, RF20 and RF21 verify `Authorization: Bearer <access_token>` when mounted without
-  a `resolveContext` override. MediCitas has no login endpoint.
-- **Other appointments routes do not run `requiereToken` yet.** Mounting them and
-  sending Bearer alone is insufficient: authentication must be wired first.
-  Without a tenant context they return 401. `x-test-context` is test-only.
+- Every appointments-service route and RF19 verify `Authorization: Bearer <access_token>`
+  when mounted without a `resolveContext` override, which only tests pass.
+  MediCitas has no login endpoint. `x-test-context` is test-only.
 - The clinic comes from verified identity, never from body/query fields or
   `x-clinic-id` / `x-role` headers. Access is restricted to that clinic.
 - Tokens need `exp`, `sub`, matching issuer/audience, a UUID `app_user_id` (or
@@ -120,10 +131,11 @@ Extra fields or any query return 422 `invalid_request`; missing specialties retu
 (409 `duplicate`). Malformed, unknown or other-clinic IDs return 404 `not_found`.
 
 Retirement does not change appointments or `professional_service` associations.
-RF4 service associations and the appointments catalog adapter remain pending: rejecting new bookings
-of inactive services while allowing their lookup for rescheduling is not wired.
-Internal catalog authorization is also pending; this administrative read returns
-403 for receptionist/professional tokens.
+RF4 service associations remain pending. appointments-service rejects new
+bookings and availability of an inactive service with 422 `service_inactive`, and
+still reschedules existing appointments of it. Internal catalog authorization is
+pending: this read returns 403 for receptionist/professional tokens, which
+appointments-service answers as 503 `dependency_unavailable`.
 
 ## Professional registration (RF4 partial)
 
@@ -188,7 +200,7 @@ Access: all three clinic roles; `platform_admin` receives 403.
 
 | Method and route | Required query | Successful output | Specific rejections |
 | --- | --- | --- | --- |
-| `GET /availability/professionals/:professionalId` | `serviceId` UUID and local `date`; professional UUID in route | 200 `{ professionalId, serviceId, durationMinutes, timeZone, date, slots: Slot[] }` | 404 malformed route UUID or resource not in clinic according to dependencies; 422 `invalid_request`, `service_not_offered` or `invalid_availability_input` |
+| `GET /availability/professionals/:professionalId` | `serviceId` UUID and local `date`; professional UUID in route | 200 `{ professionalId, serviceId, durationMinutes, timeZone, date, slots: Slot[] }` | 404 malformed route UUID or resource not in clinic according to dependencies; 422 `invalid_request`, `service_not_offered`, `service_inactive` or `invalid_availability_input` |
 | `GET /availability` | `serviceId` UUID, local `from` and `to` dates | 200 `{ serviceId, durationMinutes, timeZone, from, to, professionals: [{ professionalId, days: [{ date, slots: Slot[] }] }] }` | 404 service not in clinic according to `catalog`; 422 `invalid_request` or `invalid_availability_input` |
 
 `Slot = { startsAt: ISO, endsAt: ISO }`.
@@ -197,7 +209,8 @@ Only professionals and days with available slots appear. When no slots exist,
 RF7 returns `slots: []` and RF8 returns `professionals: []`, both with 200.
 
 Availability subtracts blocks and `booked` appointments, uses service duration
-and omits past starts. Redis caching is not wired in. A listed slot is not reserved.
+and omits past starts. With `REDIS_URL` set, reads go through the Redis cache
+([cache.md](cache.md)). A listed slot is not reserved.
 
 ## Booking and retrieving an appointment (appointments-service, RF9)
 
@@ -224,7 +237,7 @@ without crossing schedule blocks. Patient and service must belong to the clinic.
 | --- | --- |
 | **201 granted** | `Appointment` with `status: "booked"`, `cancelReason: null`, `rescheduledFromId: null`; includes stored ID, start, end and duration |
 | **409 conflict** | `{"error":"Request rejected.","code":"slot_taken"}` for a professional overlap; `patient_overlap` when the patient already occupies that interval in the clinic |
-| **422 invalid request** | `{"error":"Request rejected.","code":"invalid_request"}` for an invalid body or extra fields; other rule codes: `starts_in_past`, `service_not_offered`, `professional_unavailable`, `outside_working_hours` |
+| **422 invalid request** | `{"error":"Request rejected.","code":"invalid_request"}` for an invalid body or extra fields; other rule codes: `starts_in_past`, `service_inactive`, `service_not_offered`, `professional_unavailable`, `outside_working_hours` |
 
 If several conflicts apply, their reporting order is not guaranteed. References
 not found in the clinic can return 404; shared errors also apply.
@@ -431,7 +444,7 @@ verbatim below, including the two Spanish messages currently emitted by authenti
 | 409 | Route conflicts; the database adapter also maps `duplicate`, `overlap` and `concurrency_conflict` (transaction retries exhausted), with `error: "Request rejected."` |
 | 413 | JSON body exceeds the parser limit: `{"error":"Request rejected."}` |
 | 422 | `{"error":"Request rejected.","code":"<rule>"}`; in addition to listed rules, database mappings include `invalid_reference`, `missing_field`, `invalid_value`, `invalid_input` |
-| 503 | Dependency failure: `{"error":"Service unavailable.","code":"timeout"}` or `database_unavailable`, with `Retry-After: 1` |
+| 503 | Dependency failure: `{"error":"Service unavailable.","code":"timeout"}`, `database_unavailable` or `dependency_unavailable` (another MediCitas service), with `Retry-After: 1` |
 | 500 | Unexpected error: `{"error":"Internal server error."}`; invalid JWT configuration: `{"error":"Authentication unavailable."}` |
 
 Errors do not expose internal messages, submitted values or SQLSTATE.
@@ -450,6 +463,7 @@ Cross-checked against code and existing tests; **no requests or tests were execu
 during J5 stage 1**. Existing tests have partial scopes, including PostgreSQL and
 mocked dependencies, without full-stack Keycloak/gateway validation. Coverage
 details belong to J7. RF4 registration is implemented; its service-assignment
-contract remains pending. No operational HTTP contract exists yet for RF1-RF2,
-**RF14** (patient registration/update), RF18 (the relay that copies audit events
-into `logs_db`).
+contract remains pending. No operational HTTP contract exists yet for RF1-RF2.
+RF14 registration/update and minimal patient membership are implemented. The RF18
+relay (N10) that copies audit events into `logs_db` and end-to-end validation remain
+pending.

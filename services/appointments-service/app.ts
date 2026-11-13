@@ -1,7 +1,8 @@
 import express, { type Express } from 'express';
 import { extractTenantContext, requiereToken } from '@medicitas/auth';
 import { errorHandler, notFoundHandler } from '@medicitas/http';
-import { defaultContextResolver, requireTenantContext, type ContextResolver } from './http/context.ts';
+import { requireTenantContext, type ContextResolver } from './http/context.ts';
+import { captureAuthorization } from './http/request-auth.ts';
 import { createAppointmentCountsRouter, type AppointmentCountsDeps } from './modules/appointment-counts/appointment-counts.routes.ts';
 import { createAvailabilityRouter } from './modules/availability/availability.routes.ts';
 import type { AvailabilityDeps } from './modules/availability/availability.service.ts';
@@ -29,8 +30,11 @@ export interface AppDeps {
 }
 
 /**
- * Without dependencies the app only serves /health. server.ts supplies RF20/RF21
- * dependencies; other domain routes still require their own composition.
+ * Without dependencies the app only serves /health; server.ts mounts every module.
+ *
+ * In production every domain route verifies the Bearer token first (RF17): 401 without
+ * a valid token, then the permission checks of each module answer 403. Only tests pass
+ * `resolveContext` to inject a context without Keycloak.
  */
 export function createApp(deps?: AppDeps): Express {
   const app = express();
@@ -39,38 +43,30 @@ export function createApp(deps?: AppDeps): Express {
 
   app.use(routes);
   if (deps !== undefined) {
-    const withContext = requireTenantContext(deps.resolveContext ?? defaultContextResolver);
+    const authenticated = deps.resolveContext === undefined
+      ? [requiereToken, requireTenantContext(extractTenantContext), captureAuthorization]
+      : [requireTenantContext(deps.resolveContext), captureAuthorization];
     if (deps.schedule !== undefined) {
-      app.use('/professionals', withContext, createScheduleRouter(deps.schedule));
+      app.use('/professionals', ...authenticated, createScheduleRouter(deps.schedule));
     }
     if (deps.appointmentCounts !== undefined) {
-      const withCountsContext = deps.resolveContext === undefined
-        ? [requiereToken, requireTenantContext(extractTenantContext)]
-        : [withContext];
-      app.use('/appointments/counts', ...withCountsContext, createAppointmentCountsRouter(deps.appointmentCounts));
+      app.use('/appointments/counts', ...authenticated, createAppointmentCountsRouter(deps.appointmentCounts));
     }
     if (deps.dailyAgenda !== undefined) {
-      const withAgendaContext = deps.resolveContext === undefined
-        ? [requiereToken, requireTenantContext(extractTenantContext)]
-        : [withContext];
-      app.use('/agenda', ...withAgendaContext, createDailyAgendaRouter(deps.dailyAgenda));
+      app.use('/agenda', ...authenticated, createDailyAgendaRouter(deps.dailyAgenda));
     }
     if (deps.clinicalNotes !== undefined) {
       // Only /:appointmentId/note; every other /appointments path falls through to booking.
-      app.use('/appointments', withContext, createClinicalNoteRouter(deps.clinicalNotes));
+      app.use('/appointments', ...authenticated, createClinicalNoteRouter(deps.clinicalNotes));
     }
     if (deps.booking !== undefined) {
-      app.use('/appointments', withContext, createBookingRouter(deps.booking));
+      app.use('/appointments', ...authenticated, createBookingRouter(deps.booking));
     }
     if (deps.availability !== undefined) {
-      app.use('/availability', withContext, createAvailabilityRouter(deps.availability));
+      app.use('/availability', ...authenticated, createAvailabilityRouter(deps.availability));
     }
     if (deps.patientHistory !== undefined) {
-      // Only an explicit test/composition resolver bypasses Bearer verification.
-      const withPatientHistoryContext = deps.resolveContext === undefined
-        ? [requiereToken, requireTenantContext(extractTenantContext)]
-        : [withContext];
-      app.use('/patients', ...withPatientHistoryContext, createPatientHistoryRouter(deps.patientHistory));
+      app.use('/patients', ...authenticated, createPatientHistoryRouter(deps.patientHistory));
     }
   }
   app.use(notFoundHandler);

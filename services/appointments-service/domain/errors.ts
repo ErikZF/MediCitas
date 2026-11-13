@@ -55,3 +55,14 @@ export class ConflictError extends Error {
     this.code = code;
   }
 }
+
+/** 503. Another MediCitas service did not answer, or answered something unusable. */
+export class DependencyUnavailableError extends Error {
+  readonly status = 503;
+  readonly code = 'dependency_unavailable';
+
+  constructor(message = 'A required service is unavailable.') {
+    super(message);
+    this.name = 'DependencyUnavailableError';
+  }
+}
