@@ -4,6 +4,7 @@
 // J4 (RF21): clinic-wide counts are granted to clinic_admin and receptionist only.
 // E7 (RF10-RF12): reception reschedules and cancels; a professional may record the
 // outcome of their own appointments only, which the domain and RLS check.
+// E9 (RF15): only professionals touch clinical notes, and only on their own appointments.
 export const PERMISSIONS = [
   'clinic:create',
   'user:create',
@@ -27,6 +28,7 @@ export const PERMISSIONS = [
   'patient:update',
   'clinical-note:create',
   'clinical-note:read',
+  'clinical-note:update',
   'audit:read',
 ] as const;
 
@@ -51,7 +53,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
   // schedule:manage only permits the professional's own agenda, E3 checks ownership.
   professional: Object.freeze([
     'schedule:read', 'schedule:manage', 'appointment:read', 'appointment:record-outcome', 'patient:read',
-    'clinical-note:create', 'clinical-note:read',
+    'clinical-note:create', 'clinical-note:read', 'clinical-note:update',
   ] as const),
 } satisfies Record<string, readonly Permission[]>);
 

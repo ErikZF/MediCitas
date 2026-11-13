@@ -43,3 +43,15 @@ export class ValidationError extends Error {
     this.code = code;
   }
 }
+
+/** 409. The request clashes with data that already exists; `code` names which. */
+export class ConflictError extends Error {
+  readonly status = 409;
+  readonly code: string;
+
+  constructor(message = 'Conflict.', code = 'conflict') {
+    super(message);
+    this.name = 'ConflictError';
+    this.code = code;
+  }
+}

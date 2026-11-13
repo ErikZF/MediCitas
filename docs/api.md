@@ -34,6 +34,7 @@ prefix or gateway proxy to them yet. A route implemented and tested through
 | appointments: availability (RF7-RF8) | Yes | `availability: { db, catalog, directory }` | No | No end-to-end path |
 | appointments: booking, retrieval and lifecycle (RF9-RF13) | Yes | `booking: { db, catalog, patients }` | No | No end-to-end path |
 | appointments: patient history (RF16) | Yes | `patientHistory: { db }` | No | No end-to-end path |
+| appointments: clinical note (RF15) and its audit events (RF18 producer) | Yes | `clinicalNotes: { db }` | No | No end-to-end path |
 | appointments: counts (RF21) | Yes | `appointmentCounts: { db }` | No | No end-to-end path |
 | audit: log query (RF19) | Yes | `auditQuery: { db }` | Yes: creates a logs database connection and requires Bearer | No end-to-end path |
 
@@ -209,6 +210,38 @@ from the catalog. The old appointment becomes `rescheduled` and the new one is
 created atomically: failure preserves the original booking. Use the **new ID**
 afterwards; cancelled appointments cannot later become attended.
 
+## Clinical note (appointments-service, RF15)
+
+A route `appointmentId` UUID is required. Only the professional of the appointment
+may use these routes. Bodies are strict.
+
+| Method and route | Permission | Body | Successful output | Specific rejections |
+| --- | --- | --- | --- | --- |
+| `POST /appointments/:appointmentId/note` | `clinical-note:create`: professional | `{ content }`; trimmed string, 1-20000 characters | 201 with `ClinicalNote` | 409 `note_exists`; 422 `invalid_request` or `appointment_not_attended` |
+| `GET /appointments/:appointmentId/note` | `clinical-note:read`: professional | None | 200 with `ClinicalNote` | 404 `not_found` when the appointment has no note yet |
+| `PUT /appointments/:appointmentId/note` | `clinical-note:update`: professional | `{ content }`, same rules | 200 with `ClinicalNote` and a new `updatedAt` | 404 `not_found` when the appointment has no note yet; 422 `invalid_request` |
+
+```text
+ClinicalNote = {
+  clinicalNoteId: UUID, appointmentId: UUID, professionalId: UUID,
+  content: string, createdAt: ISO, updatedAt: ISO
+}
+```
+
+- **403 `forbidden`** for reception, clinic administrators and any professional other
+  than the one of the appointment. RLS also hides the note from them.
+- **404 `not_found`** for a malformed UUID or an appointment of another clinic.
+- **One note per appointment.** Two simultaneous POSTs give one 201 and one 409.
+
+**Audit (RF18, producer side).** Every successful POST, GET and PUT inserts an
+`AuditRecorded` event in the `outbox` table of `appointments_db`, in the same
+transaction. If the event cannot be stored, the request fails and the note is
+neither written nor returned. Rejected requests (403, 404, 409, 422) record nothing.
+The event payload is
+`{ appUserId, patientId, action: "create"|"read"|"update", resource: "clinical_note", resourceId, occurredAt }`;
+it never contains the note text. Copying the events into `audit_log` in
+`logs_db` is the relay's job (card N10), which is not implemented yet.
+
 ## Patient history (appointments-service, RF16)
 
 `GET /patients/:patientId/appointments`, with no body or query filters.
@@ -313,5 +346,5 @@ Cross-checked against code and existing tests; **no requests or tests were execu
 during J5 stage 1**. Existing tests have partial scopes, including PostgreSQL and
 mocked dependencies, without full-stack Keycloak/gateway validation. Coverage
 details belong to J7. No operational HTTP contract exists yet for RF1-RF4,
-**RF14** (patient registration/update), RF15 (clinical notes), RF18 (cross-service
-audit production) or **RF20** (daily agenda).
+**RF14** (patient registration/update), RF18 (the relay that copies audit events
+into `logs_db`) or **RF20** (daily agenda).

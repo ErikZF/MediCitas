@@ -7,6 +7,8 @@ import { createAvailabilityRouter } from './modules/availability/availability.ro
 import type { AvailabilityDeps } from './modules/availability/availability.service.ts';
 import { createBookingRouter } from './modules/booking/booking.routes.ts';
 import type { BookingDeps } from './modules/booking/booking.service.ts';
+import { createClinicalNoteRouter } from './modules/clinical-notes/clinical-note.routes.ts';
+import type { ClinicalNoteDeps } from './modules/clinical-notes/clinical-note.service.ts';
 import { createPatientHistoryRouter, type PatientHistoryDeps } from './modules/patient-history/patient-history.routes.ts';
 import routes from './modules/routes.ts';
 import { createScheduleRouter } from './modules/schedule/schedule.routes.ts';
@@ -20,6 +22,7 @@ export interface AppDeps {
   appointmentCounts?: AppointmentCountsDeps;
   availability?: AvailabilityDeps;
   patientHistory?: PatientHistoryDeps;
+  clinicalNotes?: ClinicalNoteDeps;
 }
 
 /**
@@ -39,6 +42,10 @@ export function createApp(deps?: AppDeps): Express {
     }
     if (deps.appointmentCounts !== undefined) {
       app.use('/appointments/counts', withContext, createAppointmentCountsRouter(deps.appointmentCounts));
+    }
+    if (deps.clinicalNotes !== undefined) {
+      // Only /:appointmentId/note; every other /appointments path falls through to booking.
+      app.use('/appointments', withContext, createClinicalNoteRouter(deps.clinicalNotes));
     }
     if (deps.booking !== undefined) {
       app.use('/appointments', withContext, createBookingRouter(deps.booking));
