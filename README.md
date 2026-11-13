@@ -1,39 +1,51 @@
 # MediCitas
 
+**English** · [Español](README.es.md)
+
 [![CI](https://github.com/ErikZF/MediCitas/actions/workflows/ci.yml/badge.svg)](https://github.com/ErikZF/MediCitas/actions/workflows/ci.yml)
 [![CD - Publish Images](https://github.com/ErikZF/MediCitas/actions/workflows/cd.yml/badge.svg)](https://github.com/ErikZF/MediCitas/actions/workflows/cd.yml)
 
-Plataforma SaaS multi-tenant de citas médicas (Proyecto Semestral, Etapa 1 · OLTP), construida como microservicios en Node.js + TypeScript.
+Multi-tenant SaaS platform for medical appointments (semester project, Stage 1 · OLTP), built as Node.js + TypeScript microservices.
 
-## Estructura
+## Layout
 
 ```
 services/
-  edge-gateway/          entrada única (antes api/)
-  clinics-service/       clínicas, especialidades y servicios   → clinics_db
-  users-service/         usuarios, profesionales y pacientes    → users_db
-  appointments-service/  agenda, citas y notas clínicas         → appointments_db
-  audit-service/         bitácora append-only                   → logs_db
-  Dockerfile             imagen de cualquier servicio (--build-arg SERVICE=...)
-packages/                librerías compartidas que los servicios importan por nombre,
-                         por ejemplo @medicitas/http y @medicitas/auth (cada una con su README)
-database/                esquema de cada base
-keycloak/                realm versionado
-docs/                    documentación
+  edge-gateway/          single entry point (formerly api/)
+  clinics-service/       clinics, specialties and services       → clinics_db
+  users-service/         users, professionals and patients       → users_db
+  appointments-service/  schedules, appointments, clinical notes → appointments_db
+  audit-service/         append-only audit log                   → logs_db
+  Dockerfile             image for any service (--build-arg SERVICE=...)
+packages/                shared libraries the services import by name,
+                         for example @medicitas/http and @medicitas/auth (each with its README)
+database/                schema of each database
+keycloak/                versioned realm
+docs/                    documentation
 ```
 
-Es un workspace de npm: un solo `npm install` en la raíz instala todo.
+It is an npm workspace: a single `npm install` at the root installs everything.
 
-## Comandos
+## Commands
 
 ```bash
 npm install
-npm run build        # paquetes compartidos y luego servicios
+npm run build        # shared packages, then services
 npm run typecheck
 npm test
 npm run dev -w services/edge-gateway
 ```
 
-Más detalle en [docs/api.md](docs/api.md), [docs/database.md](docs/database.md) y [docs/ci-cd.md](docs/ci-cd.md).
+## Documentation
 
-TODO: Translate to english
+| Topic | English | Español |
+| --- | --- | --- |
+| API contract | [docs/api.md](docs/api.md) | [docs/api.es.md](docs/api.es.md) |
+| Databases and RLS | [docs/database.md](docs/database.md) | [docs/database.es.md](docs/database.es.md) |
+| Multi-tenancy comparison | [docs/database-comparison.md](docs/database-comparison.md) | [docs/database-comparison.es.md](docs/database-comparison.es.md) |
+| Identity with Keycloak | [docs/keycloak.md](docs/keycloak.md) | [docs/keycloak.es.md](docs/keycloak.es.md) |
+| Availability cache | [docs/cache.md](docs/cache.md) | [docs/cache.es.md](docs/cache.es.md) |
+| CI/CD | [docs/ci-cd.md](docs/ci-cd.md) | [docs/ci-cd.es.md](docs/ci-cd.es.md) |
+| Data layer `@medicitas/db` | [packages/db/README.md](packages/db/README.md) | [packages/db/README.es.md](packages/db/README.es.md) |
+
+Every document has an English version (`name.md`) and a Spanish one (`name.es.md`), with a link at the top to switch language. When you change a document, update both versions in the same PR.

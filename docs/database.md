@@ -1,5 +1,7 @@
 # Database Architecture (Microservices)
 
+**English** · [Español](database.es.md)
+
 In MediCitas, persistence is partitioned across 4 independent relational databases (PostgreSQL 17), designed for a microservices architecture implementing the **Database-per-Service** pattern.
 
 ---

@@ -1,5 +1,7 @@
 # Availability cache (card E8)
 
+**English** · [Español](cache.es.md)
+
 appointments-service caches the **free windows of one professional on one day** in Redis.
 RF7 (one professional, one day) and RF8 (every professional, a date range) read it first and
 only go to PostgreSQL for the days that are missing.

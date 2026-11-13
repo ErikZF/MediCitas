@@ -1,38 +1,40 @@
-# Integración y Despliegue Continuo (CI/CD)
+# Continuous Integration and Delivery (CI/CD)
 
-MediCitas cuenta con un pipeline automatizado de **CI/CD** implementado con **GitHub Actions**, diseñado para la arquitectura de microservicios y monorepo (npm workspaces) del proyecto.
+**English** · [Español](ci-cd.es.md)
+
+MediCitas has an automated **CI/CD** pipeline built with **GitHub Actions**, designed for the project's microservices architecture and monorepo (npm workspaces).
 
 ---
 
-## 1. Arquitectura del Pipeline
+## 1. Pipeline architecture
 
 ```mermaid
 flowchart TD
-    subgraph Eventos["Disparadores"]
-        PR["Pull Request hacia main"]
-        PushMain["Push a main / tags"]
+    subgraph Eventos["Triggers"]
+        PR["Pull request to main"]
+        PushMain["Push to main / tags"]
     end
 
-    subgraph CI["Pipeline de CI (.github/workflows/ci.yml)"]
+    subgraph CI["CI pipeline (.github/workflows/ci.yml)"]
         direction TB
         Quality["Job: Typecheck & Quality\n(npm run typecheck)"]
         UnitTest["Job: Unit Tests\n(npm test)"]
         
-        subgraph PostgresService["Contenedor de Servicio PostgreSQL"]
-            PG["postgres:17-alpine\n(healthcheck activo)"]
+        subgraph PostgresService["PostgreSQL service container"]
+            PG["postgres:17-alpine\n(healthcheck enabled)"]
         end
         
-        IntegTest["Job: DB Integration & Concurrency\n(TEST_DATABASE_URL)\n- Verificación de políticas RLS\n- Ciclo de vida y disponibilidad de citas\n- Concurrencia y carreras críticas (I1, I2, I5)"]
-        DockerBuild["Job: Docker Build Validation\nMatriz: 5 microservicios\n(edge-gateway, clinics, users, appointments, audit)"]
+        IntegTest["Job: DB Integration & Concurrency\n(TEST_DATABASE_URL)\n- RLS policy checks\n- Appointment lifecycle and availability\n- Concurrency and critical races (I1, I2, I5)"]
+        DockerBuild["Job: Docker Build Validation\nMatrix: 5 microservices\n(edge-gateway, clinics, users, appointments, audit)"]
 
         Quality --> UnitTest
         UnitTest --> IntegTest
         IntegTest --> DockerBuild
     end
 
-    subgraph CD["Pipeline de CD (.github/workflows/cd.yml)"]
+    subgraph CD["CD pipeline (.github/workflows/cd.yml)"]
         direction TB
-        Publish["Job: Build & Push a GHCR\nghcr.io/<owner>/medicitas-<service>\nTags: :latest, :sha-<commit>, :semver"]
+        Publish["Job: Build & Push to GHCR\nghcr.io/<owner>/medicitas-<service>\nTags: :latest, :sha-<commit>, :semver"]
     end
 
     PR --> CI
@@ -42,69 +44,65 @@ flowchart TD
 
 ---
 
-## 2. Flujo de Integración Continua (CI)
+## 2. Continuous integration (CI) flow
 
-El archivo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) se ejecuta automáticamente en cada `pull_request` a `main` y en cada `push` a ramas activas (`main`, `feat/**`, `fix/**`).
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs automatically on every `pull_request` to `main` and on every `push` to active branches (`main`, `feat/**`, `fix/**`).
 
-### Jobs incluidos:
+### Jobs
 
-1. **`quality` (Typecheck y compilación)**:
-   - Configura Node.js 22 con caché de `npm`.
-   - Ejecuta `npm ci`.
-   - Compila los paquetes compartidos (`npm run build:packages`).
-   - Verifica tipos en todo el monorepo sin emitir JS (`npm run typecheck`).
+1. **`quality` (typecheck and build)**:
+   - Sets up Node.js 22 with the `npm` cache.
+   - Runs `npm ci`.
+   - Builds the shared packages (`npm run build:packages`).
+   - Type-checks the whole monorepo without emitting JS (`npm run typecheck`).
 
-2. **`unit-tests` (Pruebas unitarias)**:
-   - Ejecuta las pruebas unitarias rápidas de todos los paquetes y microservicios (`npm test`).
+2. **`unit-tests`**:
+   - Runs the fast unit tests of every package and microservice (`npm test`).
 
-3. **`integration-tests` (Pruebas de base de datos y concurrencia)**:
-   - Levanta un contenedor de servicio de **PostgreSQL 17** (`postgres:17-alpine`).
-   - Inyecta `TEST_DATABASE_URL: postgres://test:test_password@localhost:5432/postgres`.
-   - Levanta también **Redis 7** (`redis:7-alpine`) e inyecta `TEST_REDIS_URL: redis://localhost:6379` para las pruebas de la caché de disponibilidad (E8, I8). Sin esa variable, esas pruebas se saltan.
-   - Los tests crean dinámicamente una base de datos desechable (`medicitas_<label>_<pid>`), aplican el esquema real [`database/appointments/init.sql`](../database/appointments/init.sql) con extensiones (`btree_gist`), restricciones de exclusión y políticas RLS.
-   - Valida:
-     - Transacciones multi-inquilino (`withTenantTx`) con el rol de menor privilegio `medicitas_app`.
-     - Políticas de seguridad a nivel de fila (RLS).
-     - Agendamiento y ciclo de vida de citas (RF5, RF6, RF7, RF8, RF9, RF10-RF13, RF21).
-     - Condiciones de carrera y concurrencia (I1, I2, I5: reserva del último cupo simultáneo).
-   - Destruye la base de datos temporal al finalizar.
+3. **`integration-tests` (database and concurrency tests)**:
+   - Starts a **PostgreSQL 17** service container (`postgres:17-alpine`).
+   - Injects `TEST_DATABASE_URL: postgres://test:test_password@localhost:5432/postgres`.
+   - Also starts **Redis 7** (`redis:7-alpine`) and injects `TEST_REDIS_URL: redis://localhost:6379` for the availability cache tests (E8, I8). Without that variable those tests are skipped.
+   - The tests create a throwaway database on the fly (`medicitas_<label>_<pid>`) and apply the real schema [`database/appointments/init.sql`](../database/appointments/init.sql), with its extensions (`btree_gist`), exclusion constraints and RLS policies.
+   - It checks:
+     - Multi-tenant transactions (`withTenantTx`) with the least-privilege role `medicitas_app`.
+     - Row-level security (RLS) policies.
+     - Scheduling and the appointment lifecycle (RF5, RF6, RF7, RF8, RF9, RF10-RF13, RF21).
+     - Race conditions and concurrency (I1, I2, I5: booking the last slot at the same time).
+   - Drops the temporary database at the end.
 
-4. **`docker-build` (Validación de imágenes de Docker)**:
-   - Utiliza una matriz para construir en paralelo las imágenes de los 5 microservicios usando [`services/Dockerfile`](../services/Dockerfile):
+4. **`docker-build` (Docker image validation)**:
+   - Uses a matrix to build the images of the 5 microservices in parallel with [`services/Dockerfile`](../services/Dockerfile):
      - `edge-gateway`
      - `clinics-service`
      - `users-service`
      - `appointments-service`
      - `audit-service`
-   - Garantiza que cualquier cambio en código, dependencias o configuración Docker compile limpiamente antes de fusionar.
+   - Makes sure any change to code, dependencies or Docker configuration builds cleanly before merging.
 
 ---
 
-## 3. Ejecución de Pruebas de Integración Localmente
+## 3. Running the integration tests locally
 
-Para reproducir localmente las mismas pruebas de integración que ejecuta GitHub Actions:
+To reproduce locally the same integration tests that GitHub Actions runs:
 
-1. Iniciar la base de datos de appointments con Docker Compose:
+1. Start the appointments database with Docker Compose:
    ```bash
    docker compose up -d db_appointments
    ```
 
-2. Ejecutar los tests pasando `TEST_DATABASE_URL` (usando las credenciales de tu `.env`):
+2. Run the tests with `TEST_DATABASE_URL` (using the credentials from your `.env`):
    ```bash
-   # Pruebas de integración de la librería de DB (RLS y transacciones)
+   # Integration tests of the DB library (RLS and transactions)
    TEST_DATABASE_URL=postgres://tu_user:tu_password_seguro@localhost:5433/appointments_db npm run test:integration -w packages/db
 
-   # Pruebas de integración y concurrencia de appointments-service
+   # Integration and concurrency tests of appointments-service
    TEST_DATABASE_URL=postgres://tu_user:tu_password_seguro@localhost:5433/appointments_db npm test -w services/appointments-service
    ```
 
-3. Para incluir las pruebas de la caché de disponibilidad (E8), levantar Redis y agregar `TEST_REDIS_URL`:
+3. To include the availability cache tests (E8), start Redis and add `TEST_REDIS_URL`:
    ```bash
    docker compose up -d redis
 
    TEST_DATABASE_URL=postgres://tu_user:tu_password_seguro@localhost:5433/appointments_db TEST_REDIS_URL=redis://:tu_password_seguro@localhost:6379 npm test -w services/appointments-service
    ```
-
----
-
-TODO: translate to english
