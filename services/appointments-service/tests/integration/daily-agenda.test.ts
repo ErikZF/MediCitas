@@ -198,7 +198,7 @@ describe.skipIf(!url)('RF20 daily agenda with real PostgreSQL and HTTP identity'
     }
   });
 
-  test('normal server.ts exposes RF20 and RF21 with verified Bearer', { timeout: 15000 }, async (t) => {
+  test('normal server.ts exposes RF16, RF20 and RF21 with verified Bearer', { timeout: 15000 }, async (t) => {
     const reservation = reserveServer();
     let child: ChildProcess | undefined;
     let closed: Promise<unknown> | undefined;
@@ -243,7 +243,8 @@ describe.skipIf(!url)('RF20 daily agenda with real PostgreSQL and HTTP identity'
 
       const runtime = `http://127.0.0.1:${address.port}`;
       const paths = ['/agenda?date=2027-01-04',
-        '/appointments/counts?from=2027-01-04T06:00:00Z&to=2027-01-05T06:00:00Z'];
+        '/appointments/counts?from=2027-01-04T06:00:00Z&to=2027-01-05T06:00:00Z',
+        `/patients/${id(1102)}/appointments`];
       const parts = reception.split('.');
       parts[2] = (parts[2].startsWith('A') ? 'B' : 'A') + parts[2].slice(1);
       const unauthenticated: Record<string, string>[] = [
@@ -267,6 +268,11 @@ describe.skipIf(!url)('RF20 daily agenda with real PostgreSQL and HTTP identity'
       assert.deepEqual(await counts.json(), {
         counts: { booked: 0, attended: 1, no_show: 1, cancelled: 1, rescheduled: 1 }, total: 4,
       });
+      const history = await fetch(`${runtime}${paths[2]}`, {
+        headers: { ...headers, 'x-role': 'platform_admin' }, signal: t.signal,
+      });
+      assert.equal(history.status, 200);
+      assert.deepEqual((await history.json()).map((a: { appointmentId: string }) => a.appointmentId), [id(102)]);
     } finally {
       if (child && child.exitCode === null && child.signalCode === null) child.kill();
       await closed;

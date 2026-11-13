@@ -35,6 +35,7 @@ prefix or gateway proxy to them yet. A route implemented and tested through
 | clinics: service catalog (RF3) | Yes | `serviceCatalog: { db }` | Yes: clinics DB and verified Bearer | No end-to-end path |
 | clinics: specialties (RF4 reference data) | Yes | `serviceCatalog: { db }` | Yes: same clinics DB and Bearer verification | No end-to-end path |
 | users: professional registration (RF4 partial) | Yes | `professionals: { db, specialties }` | Yes: users DB, `CLINICS_SERVICE_URL` and verified Bearer | No end-to-end path |
+| users: patient registration/update and membership (RF14 partial) | Yes | `patients: { db }` | Yes: same users startup and verified Bearer | No end-to-end path |
 | appointments: working hours and blocks (RF5-RF6) | Yes | `schedule: { db, directory }` | Yes: appointments DB, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` and verified Bearer | No end-to-end path |
 | appointments: availability (RF7-RF8) | Yes | `availability: { db, catalog, directory }` | Yes: appointments DB, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` and verified Bearer; Redis cache when `REDIS_URL` is set | No end-to-end path |
 | appointments: booking, retrieval and lifecycle (RF9-RF13) | Yes | `booking: { db, catalog, patients }` | Yes: appointments DB, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` and verified Bearer | No end-to-end path |
@@ -54,7 +55,7 @@ other services with the caller's Bearer token, before any transaction opens:
 | --- | --- | --- |
 | clinics `GET /services/:serviceId` | Duration, clinic time zone and `isActive` | Exists, but returns 403 to receptionist and professional tokens |
 | users `GET /professionals/:professionalId` | The professional belongs to the clinic | Not implemented yet |
-| users `GET /patients/:patientId` | The patient belongs to the clinic; only `patientId` is read | Not implemented yet (RF14) |
+| users `GET /patients/:patientId` | The patient belongs to the clinic; only `patientId` is read | Implemented (RF14): 200 `{ patientId }`; end-to-end validation pending |
 
 A 404 from those services is answered as 404. Any other failure (403, 5xx,
 timeout, unusable body) is answered as 503 `dependency_unavailable`.
@@ -317,6 +318,28 @@ The event payload is
 it never contains the note text. Copying the events into `audit_log` in
 `logs_db` is the relay's job (card N10), which is not implemented yet.
 
+## Patients (users-service, RF14 partial)
+
+| Method and route | Permission | Success |
+| --- | --- | --- |
+| `POST /patients` | `patient:create` | 201 `{ patientId }`, `Location: /patients/:patientId` |
+| `PATCH /patients/:patientId` | `patient:update` | 204, no body |
+| `GET /patients/:patientId` | `patient:read` | 200 `{ patientId }`: patient belongs to the token clinic |
+
+POST requires identification, fullName and birthDate; phone/email are optional or null.
+PATCH accepts a nonempty subset; omission preserves a field and null clears phone/email.
+Bodies are strict; no query parameters. Trimmed identification/fullName/phone/email
+limits: 32/128/32/128. Email must be valid; birthDate is a real, nonfuture YYYY-MM-DD
+date (service UTC date).
+
+Errors: 404 not_found for unknown/other-clinic patients; 409 duplicate_identification
+within the clinic; 422 invalid_request for invalid/empty input; 503 audit_unavailable
+if contact auditing cannot queue (the patient write rolls back).
+The membership response contains only patientId, without contact or other personal fields.
+
+Contact writes atomically queue AuditRecorded in users_db.outbox; delivery to logs_db
+remains pending N10. No contact-reading route is exposed.
+
 ## Patient history (appointments-service, RF16)
 
 `GET /patients/:patientId/appointments`, with no body or query filters.
@@ -440,6 +463,7 @@ Cross-checked against code and existing tests; **no requests or tests were execu
 during J5 stage 1**. Existing tests have partial scopes, including PostgreSQL and
 mocked dependencies, without full-stack Keycloak/gateway validation. Coverage
 details belong to J7. RF4 registration is implemented; its service-assignment
-contract remains pending. No operational HTTP contract exists yet for RF1-RF2,
-**RF14** (patient registration/update), RF18 (the relay that copies audit events
-into `logs_db`).
+contract remains pending. No operational HTTP contract exists yet for RF1-RF2.
+RF14 registration/update and minimal patient membership are implemented. The RF18
+relay (N10) that copies audit events into `logs_db` and end-to-end validation remain
+pending.
