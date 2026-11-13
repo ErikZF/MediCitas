@@ -33,10 +33,11 @@ prefix or gateway proxy to them yet. A route implemented and tested through
 | clinics: service catalog (RF3) | Yes | `serviceCatalog: { db }` | Yes: clinics DB and verified Bearer | No end-to-end path |
 | clinics: specialties (RF4 reference data) | Yes | `serviceCatalog: { db }` | Yes: same clinics DB and Bearer verification | No end-to-end path |
 | users: professional registration (RF4 partial) | Yes | `professionals: { db, specialties }` | Yes: users DB, `CLINICS_SERVICE_URL` and verified Bearer | No end-to-end path |
+| users: patient registration/update and membership (RF14 partial) | Yes | `patients: { db }` | Yes: same users startup and verified Bearer | No end-to-end path |
 | appointments: working hours and blocks (RF5-RF6) | Yes | `schedule: { db, directory }` | No | No end-to-end path |
 | appointments: availability (RF7-RF8) | Yes | `availability: { db, catalog, directory }` | No | No end-to-end path |
 | appointments: booking, retrieval and lifecycle (RF9-RF13) | Yes | `booking: { db, catalog, patients }` | No | No end-to-end path |
-| appointments: patient history (RF16) | Yes | `patientHistory: { db }` | No | No end-to-end path |
+| appointments: patient history (RF16) | Yes | `patientHistory: { db }` | Yes: same appointments startup and verified Bearer | No end-to-end path |
 | appointments: clinical note (RF15) and its audit events (RF18 producer) | Yes | `clinicalNotes: { db }` | No | No end-to-end path |
 | appointments: daily agenda (RF20) | Yes | `dailyAgenda: { db, clinics }` | Yes: appointments DB, `CLINICS_SERVICE_URL` and verified Bearer | No end-to-end path |
 | appointments: counts (RF21) | Yes | `appointmentCounts: { db }` | Yes: same appointments startup and verified Bearer | No end-to-end path |
@@ -303,6 +304,28 @@ The event payload is
 `{ appUserId, patientId, action: "create"|"read"|"update", resource: "clinical_note", resourceId, occurredAt }`;
 it never contains the note text. Copying the events into `audit_log` in
 `logs_db` is the relay's job (card N10), which is not implemented yet.
+
+## Patients (users-service, RF14 partial)
+
+| Method and route | Permission | Success |
+| --- | --- | --- |
+| `POST /patients` | `patient:create` | 201 `{ patientId }`, `Location: /patients/:patientId` |
+| `PATCH /patients/:patientId` | `patient:update` | 204, no body |
+| `GET /patients/:patientId` | `patient:read` | 200 `{ patientId }`: patient belongs to the token clinic |
+
+POST requires identification, fullName and birthDate; phone/email are optional or null.
+PATCH accepts a nonempty subset; omission preserves a field and null clears phone/email.
+Bodies are strict; no query parameters. Trimmed identification/fullName/phone/email
+limits: 32/128/32/128. Email must be valid; birthDate is a real, nonfuture YYYY-MM-DD
+date (service UTC date).
+
+Errors: 404 not_found for unknown/other-clinic patients; 409 duplicate_identification
+within the clinic; 422 invalid_request for invalid/empty input; 503 audit_unavailable
+if contact auditing cannot queue (the patient write rolls back).
+The membership response contains only patientId, without contact or other personal fields.
+
+Contact writes atomically queue AuditRecorded in users_db.outbox; delivery to logs_db
+remains pending N10. No contact-reading route is exposed.
 
 ## Patient history (appointments-service, RF16)
 

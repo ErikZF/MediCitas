@@ -336,3 +336,30 @@ GRANT SELECT, UPDATE ON app_user, professional TO db_professional;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO medicitas_app;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
+
+-- outbox: RF18 contact audit events for the new users database.
+-- N10 owns relay delivery and its separate consumer permissions.
+
+CREATE TABLE public.outbox (
+    event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    clinic_id UUID NOT NULL,
+    aggregate_id UUID NOT NULL,
+    event_type VARCHAR(64) NOT NULL,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_at TIMESTAMPTZ
+);
+
+ALTER TABLE public.outbox ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.outbox FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY outbox_insert_policy ON public.outbox
+    FOR INSERT TO medicitas_app
+    WITH CHECK (
+        clinic_id = app_current_clinic_id()
+        AND app_current_role()
+            IN ('clinic_admin', 'receptionist', 'professional')
+    );
+
+REVOKE ALL ON public.outbox FROM PUBLIC, medicitas_app;
+GRANT INSERT ON public.outbox TO medicitas_app;
