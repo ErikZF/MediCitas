@@ -1,12 +1,14 @@
 # MediCitas API contract (J5)
 
+**English** · [Español](api.es.md)
+
 ## API architecture
 
 Domain routes use HTTP/JSON and are grouped by responsibility: appointments
 contains scheduling, booking and appointment queries; audit reads the separate
 log database. Booking obtains catalog and patient information through injected
 dependencies before its database transaction, keeping external lookups outside
-that transaction. Their real service adapters still need to be connected.
+that transaction. Some of the endpoints those adapters call are still pending (see below).
 
 Identity is delegated to Keycloak so the domain API does not manage login or
 credentials. Where Bearer verification is wired, the service derives the clinic
@@ -207,7 +209,7 @@ RF7 returns `slots: []` and RF8 returns `professionals: []`, both with 200.
 
 Availability subtracts blocks and `booked` appointments, uses service duration
 and omits past starts. With `REDIS_URL` set, reads go through the Redis cache
-(`docs/cache.md`). A listed slot is not reserved.
+([cache.md](cache.md)). A listed slot is not reserved.
 
 ## Booking and retrieving an appointment (appointments-service, RF9)
 

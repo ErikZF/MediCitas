@@ -1,5 +1,7 @@
 # Keycloak Multi-Tenant Identity Architecture
 
+**English** · [Español](keycloak.es.md)
+
 MediCitas uses **Keycloak 26** as its centralized Identity and Access Management (IAM) provider, implementing a **Single Realm with Custom OIDC Token Mappers** architecture.
 
 This document describes how authentication, multi-tenancy, and domain authorization integrate across MediCitas microservices.
