@@ -9,7 +9,7 @@ import type { ClinicCatalog, PatientDirectory } from '../../modules/booking/port
 import type { ProfessionalDirectory } from '../../modules/schedule/schedule.service.ts';
 import { createTestDatabase } from './test-database.ts';
 
-// A running appointments-service (schedule, booking and availability) on a throwaway database,
+// A running appointments-service (schedule, booking, availability and clinical notes) on a throwaway database,
 // with clinics-service and users-service replaced by in-memory stand-ins.
 
 export const CLINIC_A = '0b6c2f3e-4d1a-4c8e-9f2b-7a1d3e5c9b01';
@@ -99,6 +99,7 @@ export async function startBookingApp(options: {
     booking: { db: database.db, catalog, patients, now, cache: options.cache },
     availability: { db: database.db, catalog, directory, now, cache: options.cache },
     schedule: { db: database.db, directory, cache: options.cache },
+    clinicalNotes: { db: database.db, now },
   });
   const server: Server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
