@@ -18,11 +18,14 @@ export class CircuitBreaker {
   private state: BreakerState = 'closed';
   private failures = 0;
   private openedAt = 0;
+  // Plain fields, not parameter properties: Node runs this file by stripping types only.
+  private readonly options: BreakerOptions;
+  private readonly now: () => number;
 
-  constructor(
-    private readonly options: BreakerOptions = { failureThreshold: 3, openMs: 5000 },
-    private readonly now: () => number = Date.now,
-  ) {}
+  constructor(options: BreakerOptions = { failureThreshold: 3, openMs: 5000 }, now: () => number = Date.now) {
+    this.options = options;
+    this.now = now;
+  }
 
   get current(): BreakerState {
     if (this.state === 'open' && this.now() - this.openedAt >= this.options.openMs) {

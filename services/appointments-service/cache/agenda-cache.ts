@@ -75,8 +75,10 @@ export class RedisAgendaCache implements AgendaCache {
   private pending: Invalidation[] = [];
   /** When pending invalidations were dropped: skip the cache until every older value expired. */
   private bypassUntil = 0;
+  private readonly redis: Redis;
 
-  constructor(private readonly redis: Redis, options: RedisAgendaCacheOptions = {}) {
+  constructor(redis: Redis, options: RedisAgendaCacheOptions = {}) {
+    this.redis = redis;
     this.ttl = options.ttlSeconds ?? 600;
     this.namespace = options.namespace ?? '';
     this.breaker = options.breaker ?? new CircuitBreaker();

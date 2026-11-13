@@ -9,7 +9,8 @@
     "rewriteRelativeImportExtensions": true,
     "rootDir": ".",
     "outDir": "dist",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "erasableSyntaxOnly": true
   },
   "include": [
     "**/*.ts"
