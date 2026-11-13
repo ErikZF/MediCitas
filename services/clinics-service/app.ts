@@ -1,13 +1,25 @@
-import express from 'express';
+import express, { type Express } from 'express';
+import { requiereTenantContext, requiereToken } from '@medicitas/auth';
 import { errorHandler, notFoundHandler } from '@medicitas/http';
 import routes from './modules/routes.ts';
+import { createServiceCatalogRouter } from './modules/service-catalog/service-catalog.routes.ts';
+import type { ServiceCatalogDeps } from './modules/service-catalog/service-catalog.service.ts';
 
-const app = express();
+export interface AppDeps {
+  serviceCatalog?: ServiceCatalogDeps;
+}
 
-app.use(express.json());
+/** server.ts supplies the real database; authentication has no context override. */
+export function createApp(deps: AppDeps = {}): Express {
+  const app = express();
+  app.use(express.json());
+  app.use(routes);
+  if (deps.serviceCatalog !== undefined) {
+    app.use('/services', requiereToken, requiereTenantContext, createServiceCatalogRouter(deps.serviceCatalog));
+  }
+  app.use(notFoundHandler);
+  app.use(errorHandler);
+  return app;
+}
 
-app.use(routes);
-app.use(notFoundHandler);
-app.use(errorHandler);
-
-export default app;
+export default createApp();
