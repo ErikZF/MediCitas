@@ -12,7 +12,8 @@
     "build": "tsc",
     "start": "node --env-file-if-exists=../../.env dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "measure:availability": "node scripts/measure-availability.ts"
   },
   "dependencies": {
     "@medicitas/auth": "*",
