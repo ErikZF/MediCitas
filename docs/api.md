@@ -30,6 +30,7 @@ prefix or gateway proxy to them yet. A route implemented and tested through
 | Service / feature | Implemented | Dependencies required to mount it in `createApp` | Enabled by normal `server.ts` startup | Compose / gateway |
 | --- | --- | --- | --- | --- |
 | All five services: `GET /health`; gateway: `GET /` | Yes | None to mount health | Yes, if the service starts successfully | Compose has no HTTP services; gateway only serves its two routes |
+| clinics: service catalog (RF3) | Yes | `serviceCatalog: { db }` | Yes: clinics DB and verified Bearer | No end-to-end path |
 | appointments: working hours and blocks (RF5-RF6) | Yes | `schedule: { db, directory }` | No | No end-to-end path |
 | appointments: availability (RF7-RF8) | Yes | `availability: { db, catalog, directory }` | No | No end-to-end path |
 | appointments: booking, retrieval and lifecycle (RF9-RF13) | Yes | `booking: { db, catalog, patients }` | No | No end-to-end path |
@@ -38,12 +39,13 @@ prefix or gateway proxy to them yet. A route implemented and tested through
 | appointments: counts (RF21) | Yes | `appointmentCounts: { db }` | No | No end-to-end path |
 | audit: log query (RF19) | Yes | `auditQuery: { db }` | Yes: creates a logs database connection and requires Bearer | No end-to-end path |
 
-`clinics-service` and `users-service` only expose health. Appointments still needs
+`users-service` only exposes health. Appointments still needs
 real catalog/directory adapters and startup wiring. Compose currently starts
 PostgreSQL, Keycloak and Redis, without HTTP services.
 
 ## Identity, permissions and shared formats
 
+- RF3 always verifies Bearer and derives its tenant context from the token.
 - RF16 and RF19 verify `Authorization: Bearer <access_token>` when mounted without
   a `resolveContext` override. MediCitas has no login endpoint.
 - **Other appointments routes do not run `requiereToken` yet.** Mounting them and
@@ -65,7 +67,7 @@ PostgreSQL, Keycloak and Redis, without HTTP services.
 - Availability dates use `YYYY-MM-DD` in the clinic's IANA time zone.
   Appointment and block intervals are `[start, end)`: back-to-back appointments
   do not overlap. The RF8 calendar-date range includes both endpoints.
-- Booking, rescheduling, cancellation, outcome, RF19 and RF21 use strict objects:
+- RF3, booking, rescheduling, cancellation, outcome, RF19 and RF21 use strict objects:
   extra fields produce 422. Working-hours, block and availability schemas strip
   unknown fields; those fields cannot change the clinic. RF16 consumes no query
   filters.
@@ -87,8 +89,36 @@ No authentication, parameters or body; successful response: 200.
 | appointments-service | `GET /health` | `{"status":"ok","service":"appointments-service"}` |
 | audit-service | `GET /health` | `{"status":"ok","service":"audit-service"}` |
 
-Health does not check PostgreSQL, Keycloak or Redis readiness. Audit needs valid
+Health does not check PostgreSQL, Keycloak or Redis readiness. Clinics and audit need valid
 database configuration to start normally, even to serve health.
+
+## Service catalog (clinics-service, RF3)
+
+Access: `clinic_admin` only. POST/GET/PUT/DELETE use `service:create`,
+`service:read`, `service:update` and `service:delete`, respectively.
+Clinic and identity come only from the verified Bearer.
+
+| Method and route | Successful output |
+| --- | --- |
+| `POST /services` | 201 `Service`, active; `Location: /services/:serviceId` |
+| `GET /services` | 200 `Service[]`, active only, ordered by name then ID |
+| `GET /services/:serviceId` | 200 `Service`, including retired services of the clinic |
+| `PUT /services/:serviceId` | 200 updated `Service`; inactive services return 404 |
+| `DELETE /services/:serviceId` | 204; sets `isActive: false`, preserving the row; repeats also return 204 |
+
+POST/PUT require exactly `{ name, durationMinutes, specialtyId }`: trimmed name
+of 1-128 characters, integer duration 1-2147483647 and an existing specialty UUID.
+`Service = { serviceId, name, durationMinutes, specialtyId, isActive, timeZone }`;
+`isActive` is output-only and `timeZone` comes from the clinic. PUT cannot reactivate.
+Extra fields or any query return 422 `invalid_request`; missing specialties return
+422 `invalid_reference`. Names remain unique within the clinic after retirement
+(409 `duplicate`). Malformed, unknown or other-clinic IDs return 404 `not_found`.
+
+Retirement does not change appointments or `professional_service` associations.
+RF4 and the appointments catalog adapter remain pending: rejecting new bookings
+of inactive services while allowing their lookup for rescheduling is not wired.
+Internal catalog authorization is also pending; this administrative read returns
+403 for receptionist/professional tokens.
 
 ## Working hours and blocks (appointments-service, RF5-RF6)
 
@@ -345,6 +375,6 @@ no real tokens or secrets belong in Git.
 Cross-checked against code and existing tests; **no requests or tests were executed
 during J5 stage 1**. Existing tests have partial scopes, including PostgreSQL and
 mocked dependencies, without full-stack Keycloak/gateway validation. Coverage
-details belong to J7. No operational HTTP contract exists yet for RF1-RF4,
+details belong to J7. No operational HTTP contract exists yet for RF1-RF2, RF4,
 **RF14** (patient registration/update), RF18 (the relay that copies audit events
 into `logs_db`) or **RF20** (daily agenda).
