@@ -37,7 +37,8 @@ público ni proxy del gateway hacia ellas. Una ruta implementada y probada media
 | Los cinco servicios: `GET /health`; gateway: `GET /` | Sí | Ninguna para montar health | Sí, si el servicio arranca bien | Compose no tiene servicios HTTP; el gateway solo sirve sus dos rutas |
 | clinics: catálogo de servicios (RF3) | Sí | `serviceCatalog: { db }` | Sí: base de clinics y Bearer verificado | Sin ruta de punta a punta |
 | clinics: especialidades (datos de referencia de RF4) | Sí | `serviceCatalog: { db }` | Sí: misma base de clinics y verificación del Bearer | Sin ruta de punta a punta |
-| users: registro de profesionales (RF4 parcial) | Sí | `professionals: { db, specialties }` | Sí: base de users, `CLINICS_SERVICE_URL` y Bearer verificado | Sin ruta de punta a punta |
+| users: registro y consulta de profesionales (RF4) | Sí | `professionals: { db, specialties, syncProfessionalId }` | Sí: base de users, clinics y Admin API de Keycloak | Servicio directo |
+| appointments: servicios por profesional (RF4) | Sí | `associations: { db, catalog, directory }` | Sí: base de appointments, clinics y users | Servicio directo |
 | appointments: horarios y bloqueos (RF5-RF6) | Sí | `schedule: { db, directory }` | Sí: base de appointments, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` y Bearer verificado | Sin ruta de punta a punta |
 | appointments: disponibilidad (RF7-RF8) | Sí | `availability: { db, catalog, directory }` | Sí: base de appointments, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` y Bearer verificado; caché de Redis si hay `REDIS_URL` | Sin ruta de punta a punta |
 | appointments: reserva, consulta y ciclo de vida (RF9-RF13) | Sí | `booking: { db, catalog, patients }` | Sí: base de appointments, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` y Bearer verificado | Sin ruta de punta a punta |
@@ -47,16 +48,13 @@ público ni proxy del gateway hacia ellas. Una ruta implementada y probada media
 | appointments: conteos (RF21) | Sí | `appointmentCounts: { db }` | Sí: mismo arranque de appointments y Bearer verificado | Sin ruta de punta a punta |
 | audit: consulta de la bitácora (RF19) | Sí | `auditQuery: { db }` | Sí: crea una conexión a la base de logs y exige Bearer | Sin ruta de punta a punta |
 
-Las asociaciones de servicios de RF4 siguen pendientes. Compose levanta hoy
-PostgreSQL, Keycloak y Redis, sin servicios HTTP.
-
 **Dependencias de appointments-service.** Reservas, disponibilidad y horarios llaman
 a otros servicios con el Bearer de quien llama, antes de abrir cualquier transacción:
 
 | Llamada | Para qué | Estado hoy |
 | --- | --- | --- |
-| clinics `GET /services/:serviceId` | Duración, zona horaria de la clínica e `isActive` | Existe, pero responde 403 a tokens de recepción y de profesional |
-| users `GET /professionals/:professionalId` | Que el profesional pertenezca a la clínica | Todavía no implementado |
+| clinics `GET /services/:serviceId` | Especialidad, duración, zona horaria e `isActive` | Los tres roles de clínica |
+| users `GET /professionals/:professionalId` | Profesional activo de la clínica | 200 `{ professionalId }`; el administrador recibe también `specialtyIds` |
 | users `GET /patients/:patientId` | Que el paciente pertenezca a la clínica; solo se lee `patientId` | Todavía no implementado (RF14) |
 
 Un 404 de esos servicios se responde como 404. Cualquier otra falla (403, 5xx,
@@ -113,8 +111,7 @@ health. Users además requiere `CLINICS_SERVICE_URL`.
 
 ## Catálogo de servicios (clinics-service, RF3)
 
-Acceso: solo `clinic_admin`. POST/GET/PUT/DELETE usan `service:create`,
-`service:read`, `service:update` y `service:delete`, respectivamente.
+Los roles de clínica pueden consultar un servicio individual con `schedule:read`. Solo `clinic_admin` puede listar o gestionar servicios.
 La clínica y la identidad vienen solo del Bearer verificado.
 
 | Método y ruta | Salida exitosa |
@@ -136,29 +133,27 @@ clínica después de retirar el servicio (409 `duplicate`). Un ID mal formado,
 desconocido o de otra clínica devuelve 404 `not_found`.
 
 Retirar un servicio no cambia las citas ni las asociaciones de `professional_service`.
-Las asociaciones de servicios de RF4 siguen pendientes. appointments-service rechaza
+appointments-service rechaza
 las reservas nuevas y la disponibilidad de un servicio inactivo con 422
-`service_inactive`, y sigue permitiendo reprogramar sus citas existentes. La
-autorización interna del catálogo está pendiente: esta lectura devuelve 403 a los
-tokens de recepción y de profesional, y appointments-service lo responde como 503
-`dependency_unavailable`.
+`service_inactive`, y sigue permitiendo reprogramar sus citas existentes.
 
-## Registro de profesionales (RF4 parcial)
+## Registro de profesionales y asociación a servicios (RF4)
 
-Ambas rutas exigen `clinic_admin` con `professional:create`. El catálogo de
+Las siguientes rutas exigen `clinic_admin` con `professional:create`. El catálogo de
 especialidades permite el registro sin dar permisos de gestión de servicios.
 
 | Dueño | Método y ruta | Entrada | Salida exitosa |
 | --- | --- | --- | --- |
 | clinics | `GET /specialties` | Sin query | 200 `[{ specialtyId, name }]`, global, ordenado por nombre y luego ID |
 | users | `POST /professionals` | `{ appUserId, fullName, specialtyIds }` | 201 `{ professionalId, appUserId, fullName, isActive: true, specialtyIds }` |
+| appointments | `PUT /professionals/:professionalId/services/:serviceId` | Sin campos ni query | 204, también al repetir |
 
 El body es estricto: appUserId UUID, fullName sin espacios extremos de 1-128
 caracteres y un arreglo no vacío de UUID de especialidades distintos. No se aceptan
 parámetros de query. El app_user existente debe estar activo, tener el rol
 `professional` y pertenecer a la clínica del contexto verificado. Users valida las
-especialidades contra clinics antes de su transacción local; el app_user existente y
-la cuenta de Keycloak no cambian. Los specialtyIds de salida son UUID canónicos
+especialidades contra clinics antes de su transacción local. Después sincroniza `professional_id` en la cuenta de Keycloak para los tokens nuevos.
+Ante 503 `identity_unavailable`, repetir el mismo registro. Si repara el claim, responde 200. Los specialtyIds de salida son UUID canónicos
 ordenados. No hay ruta para editar el perfil.
 
 Usuarios desconocidos o de otra clínica devuelven 404 `not_found`; usuarios inactivos
@@ -171,9 +166,9 @@ compartidos.
 
 `CLINICS_SERVICE_URL` es la URL base alcanzable de clinics. El cliente reenvía el
 Bearer original; ambos servicios lo verifican por separado, así que issuer y audience
-deben ser válidos para los dos. La asignación de servicios de RF4 y la verificación de
-cobertura de especialidades siguen pendientes; el registro no crea identidades ni
-actualiza claims de Keycloak.
+deben ser válidos para los dos. La asociación consulta a ambos propietarios antes de escribir en `professional_service`.
+Los IDs ajenos o desconocidos devuelven 404. Un servicio retirado o una especialidad incompatible devuelven 422
+(`service_inactive` o `specialty_mismatch`). Si cambia la especialidad del servicio, disponibilidad y reserva exigen una asociación que coincida.
 
 ## Horarios y bloqueos (appointments-service, RF5-RF6)
 
@@ -456,7 +451,6 @@ y Compose siguen pendientes de validar; ningún token real ni secreto va en Git.
 Contrastado con el código y las pruebas existentes; **durante la etapa 1 de J5 no se
 ejecutaron peticiones ni pruebas**. Las pruebas existentes tienen alcances parciales,
 incluidos PostgreSQL y dependencias simuladas, sin validar la pila completa con
-Keycloak y gateway. El detalle de cobertura corresponde a J7. El registro de RF4 está
-implementado; su contrato de asignación de servicios sigue pendiente. Todavía no hay
+Keycloak y gateway. El detalle de cobertura corresponde a J7. Todavía no hay
 contrato HTTP operativo para RF1-RF2, **RF14** (registro y actualización de pacientes)
 ni para RF18 (el relay que copia los eventos de auditoría a `logs_db`).

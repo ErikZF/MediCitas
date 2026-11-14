@@ -71,7 +71,7 @@ export async function startBookingApp(options: {
       if (ctx.clinicId !== CLINIC_A || (serviceId !== SERVICE_30 && serviceId !== SERVICE_OTHER)) {
         throw new NotFoundError('Service not found in this clinic.');
       }
-      return { serviceId, durationMinutes: 30, timeZone: options.timeZone };
+      return { serviceId, specialtyId: SPECIALTY, durationMinutes: 30, timeZone: options.timeZone };
     },
   };
   const patients: PatientDirectory = {

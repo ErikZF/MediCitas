@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import type { TenantContext } from '@medicitas/db';
 import { NotFoundError } from '../domain/errors.ts';
-import type { BookableService, ClinicCatalog, PatientDirectory } from '../modules/booking/ports.ts';
+import type { ClinicCatalog, PatientDirectory } from '../modules/booking/ports.ts';
 import type { ProfessionalDirectory } from '../modules/schedule/schedule.service.ts';
+import type { SpecialtyDirectory } from '../modules/service-associations/routes.ts';
 import { getJson, serviceBaseUrl } from './service-client.ts';
 
 // Real implementations of the ports that booking, availability and schedules use.
@@ -11,6 +12,7 @@ import { getJson, serviceBaseUrl } from './service-client.ts';
 
 const catalogEntry = z.object({
   serviceId: z.uuid(),
+  specialtyId: z.uuid(),
   durationMinutes: z.number().int().positive(),
   isActive: z.boolean(),
   timeZone: z.string().min(1),
@@ -26,7 +28,7 @@ const sameId = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 export function createHttpClinicCatalog(baseUrl: string | undefined): ClinicCatalog {
   const base = serviceBaseUrl('CLINICS_SERVICE_URL', baseUrl);
   return {
-    async getBookableService(_ctx: TenantContext, serviceId: string): Promise<BookableService> {
+    async getBookableService(_ctx: TenantContext, serviceId: string) {
       const entry = await getJson(base, `services/${segment(serviceId)}`, catalogEntry, 'Service not found in this clinic.');
       if (!sameId(entry.serviceId, serviceId)) throw new NotFoundError('Service not found in this clinic.');
       return entry;
@@ -35,9 +37,15 @@ export function createHttpClinicCatalog(baseUrl: string | undefined): ClinicCata
 }
 
 /** users-service GET /professionals/:id. */
-export function createHttpProfessionalDirectory(baseUrl: string | undefined): ProfessionalDirectory {
+export function createHttpProfessionalDirectory(baseUrl: string | undefined): ProfessionalDirectory & SpecialtyDirectory {
   const base = serviceBaseUrl('USERS_SERVICE_URL', baseUrl);
   return {
+    async getSpecialties(professionalId) {
+      const schema = professional.extend({ specialtyIds: z.array(z.uuid()) });
+      const entry = await getJson(base, `professionals/${segment(professionalId)}`, schema, 'Professional not found in this clinic.');
+      if (!sameId(entry.professionalId, professionalId)) throw new NotFoundError();
+      return entry.specialtyIds;
+    },
     async assertInClinic(_ctx: TenantContext, professionalId: string): Promise<void> {
       const found = await getJson(base, `professionals/${segment(professionalId)}`, professional, 'Professional not found in this clinic.');
       if (!sameId(found.professionalId, professionalId)) throw new NotFoundError('Professional not found in this clinic.');

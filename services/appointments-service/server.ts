@@ -17,6 +17,7 @@ try {
   if (cache === undefined) logger.info('Availability cache disabled: every read goes to PostgreSQL.');
 
   startServer(createApp({
+    associations: { db, catalog, directory },
     schedule: { db, directory, cache },
     availability: { db, catalog, directory, cache },
     booking: { db, catalog, patients, cache },

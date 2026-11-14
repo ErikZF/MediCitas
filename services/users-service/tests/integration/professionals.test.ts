@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer, type Server } from 'node:http';
@@ -16,6 +17,7 @@ const clinic = '00000000-0000-4000-8000-000000000101';
 const otherClinic = '00000000-0000-4000-8000-000000000102';
 const caller = '00000000-0000-4000-8000-000000000201';
 const targetUser = '00000000-0000-4000-8000-000000000202';
+const targetSubject = '00000000-0000-4000-8000-000000000302';
 const foreignUser = '00000000-0000-4000-8000-000000000203';
 const inactiveUser = '00000000-0000-4000-8000-000000000204';
 const wrongRoleUser = '00000000-0000-4000-8000-000000000205';
@@ -29,11 +31,16 @@ const input = { appUserId: targetUser, fullName: 'Dra. Ana', specialtyIds: [spec
 describe.skipIf(!url)('RF4 professional registration through users and clinics', () => {
   let users: Awaited<ReturnType<typeof createTestDatabase>> | undefined;
   let clinics: Awaited<ReturnType<typeof createTestDatabase>> | undefined;
+  let appointments: Awaited<ReturnType<typeof createTestDatabase>> | undefined;
+  let appointmentsBase: string;
+  let claim: string | undefined;
+  let identityFails = false;
   const children: Array<{ child: ChildProcess; closed: Promise<unknown> }> = [];
   const servers: Server[] = [];
   let base: string;
   let adminToken: string;
   let receptionToken: string;
+  let professionalToken: string;
   let catalogFails = false;
   let catalogCalls = 0;
   let forwardedAuthorization: string | undefined;
@@ -79,7 +86,7 @@ describe.skipIf(!url)('RF4 professional registration through users and clinics',
     return `http://127.0.0.1:${address.port}`;
   }
 
-  function databaseEnv(databaseUrl: string, prefix: 'DB_USERS' | 'DB_CLINICS'): NodeJS.ProcessEnv {
+  function databaseEnv(databaseUrl: string, prefix: 'DB_USERS' | 'DB_CLINICS' | 'DB_APPOINTMENTS'): NodeJS.ProcessEnv {
     const parsed = new URL(databaseUrl);
     return {
       [`${prefix}_HOST`]: parsed.hostname,
@@ -93,19 +100,41 @@ describe.skipIf(!url)('RF4 professional registration through users and clinics',
   beforeAll(async () => {
     users = await createTestDatabase(url!, 'users');
     clinics = await createTestDatabase(url!, 'clinics');
+    appointments = await createTestDatabase(url!, 'appointments');
     await users.pool.query(`INSERT INTO app_user (app_user_id, keycloak_sub, clinic_id, role_code, is_active)
       VALUES ($1, 'rf4-admin', $6, 'clinic_admin', true),
-             ($2, 'rf4-target', $6, 'professional', true),
+             ($2, $8, $6, 'professional', true),
              ($3, 'rf4-foreign', $7, 'professional', true),
              ($4, 'rf4-inactive', $6, 'professional', false),
              ($5, 'rf4-reception', $6, 'receptionist', true)`,
-    [caller, targetUser, foreignUser, inactiveUser, wrongRoleUser, clinic, otherClinic]);
+    [caller, targetUser, foreignUser, inactiveUser, wrongRoleUser, clinic, otherClinic, targetSubject]);
     await clinics.pool.query('INSERT INTO specialty (specialty_id, name) VALUES ($1, $2), ($3, $4)',
       [specialty, 'General', otherSpecialty, 'Cardiology']);
 
     const { publicKey, privateKey } = await generateKeyPair('RS256');
     const jwk = { ...await exportJWK(publicKey), kid: 'rf4-runtime', alg: 'RS256', use: 'sig' };
-    const identityUrl = await listen(createServer((req, res) => {
+    const identityUrl = await listen(createServer(async (req, res) => {
+      if (req.url === '/realms/RF4/protocol/openid-connect/token') {
+        res.writeHead(200).end(JSON.stringify({ access_token: 'test-admin-token' }));
+        return;
+      }
+      if (req.url === '/admin/realms/RF4/users/' + targetSubject && req.headers.authorization === 'Bearer test-admin-token') {
+        if (identityFails) { res.writeHead(503).end(); return; }
+        if (req.method === 'GET') {
+          res.writeHead(200).end(JSON.stringify({ attributes: {
+            clinic_id: [clinic], app_user_id: [targetUser], role: ['professional'], extra: ['keep'],
+            ...(claim ? { professional_id: [claim] } : {}),
+          } }));
+        } else if (req.method === 'PUT') {
+          const chunks = [];
+          for await (const chunk of req) chunks.push(Buffer.from(chunk));
+          const { attributes } = JSON.parse(Buffer.concat(chunks).toString());
+          if (attributes.extra?.[0] !== 'keep') { res.writeHead(400).end(); return; }
+          claim = attributes.professional_id[0];
+          res.writeHead(204).end();
+        } else res.writeHead(405).end();
+        return;
+      }
       if (req.url !== '/realms/RF4/protocol/openid-connect/certs') {
         res.writeHead(404).end();
         return;
@@ -119,7 +148,8 @@ describe.skipIf(!url)('RF4 professional registration through users and clinics',
       KEYCLOAK_AUDIENCE: 'rf4-runtime', REALM_NAME: 'RF4',
     };
     async function token(role: string) {
-      return new SignJWT({ sub: 'rf4-caller', app_user_id: caller, clinic_id: clinic,
+      return new SignJWT({ sub: 'rf4-admin', app_user_id: caller, clinic_id: clinic,
+        ...(role === 'professional' ? { professional_id: targetUser } : {}),
         role, realm_access: { roles: [role] } })
         .setProtectedHeader({ alg: 'RS256', kid: jwk.kid })
         .setIssuer(authEnv.KEYCLOAK_ISSUER).setAudience(authEnv.KEYCLOAK_AUDIENCE)
@@ -127,6 +157,7 @@ describe.skipIf(!url)('RF4 professional registration through users and clinics',
     }
     adminToken = await token('clinic_admin');
     receptionToken = await token('receptionist');
+    professionalToken = await token('professional');
     const clinicsBase = await startService(new URL('../../../clinics-service/server.ts', import.meta.url), {
       ...authEnv, ...databaseEnv(clinics.url, 'DB_CLINICS'),
     });
@@ -148,7 +179,11 @@ describe.skipIf(!url)('RF4 professional registration through users and clinics',
       }
     }));
     base = await startService(new URL('../../server.ts', import.meta.url), {
-      ...authEnv, ...databaseEnv(users.url, 'DB_USERS'), CLINICS_SERVICE_URL: catalogUrl,
+      ...authEnv, ...databaseEnv(users.url, 'DB_USERS'), CLINICS_SERVICE_URL: catalogUrl, KEYCLOAK_USER_ADMIN_SECRET: 'test-only',
+    });
+    appointmentsBase = await startService(new URL('../../../appointments-service/server.ts', import.meta.url), {
+      ...authEnv, ...databaseEnv(appointments.url, 'DB_APPOINTMENTS'), CLINICS_SERVICE_URL: clinicsBase,
+      USERS_SERVICE_URL: base, CACHE_ENABLED: 'false',
     });
   }, 25_000);
 
@@ -161,10 +196,13 @@ describe.skipIf(!url)('RF4 professional registration through users and clinics',
     }
     await users?.drop();
     await clinics?.drop();
+    await appointments?.drop();
   });
 
   beforeEach(async () => {
     catalogFails = false;
+    identityFails = false;
+    claim = undefined;
     catalogCalls = 0;
     forwardedAuthorization = undefined;
     // Only fixture owners clear these disposable DBs; the HTTP login has no bypass.
@@ -187,6 +225,80 @@ describe.skipIf(!url)('RF4 professional registration through users and clinics',
     assert.equal((await users!.pool.query('SELECT 1 FROM professional_specialty')).rowCount, 0);
   }
 
+  async function call(method: string, path: string, bearer = adminToken, body?: unknown) {
+    return fetch(appointmentsBase + path, { method, headers: {
+      authorization: 'Bearer ' + bearer, 'content-type': 'application/json',
+      'x-clinic-id': otherClinic, 'x-role': 'clinic_admin',
+    }, body: JSON.stringify(body) });
+  }
+
+  async function serviceFor(clinicId: string, specialtyId: string) {
+    await clinics!.pool.query(`insert into clinic(clinic_id, identifier, name, time_zone)
+      values ($1, $2, 'Clinic', 'UTC') on conflict do nothing`, [clinicId, clinicId.slice(-8)]);
+    const id = randomUUID();
+    await clinics!.pool.query(`insert into service(service_id, clinic_id, specialty_id, name, duration_minutes)
+      values ($1, $2, $3, $4, 30)`, [id, clinicId, specialtyId, id]);
+    return id;
+  }
+
+  test('an assigned service supplies a real slot and booking until its required specialty changes', async () => {
+    const registration = await request({ ...input, specialtyIds: [specialty] });
+    assert.equal(registration.status, 201);
+    const { professionalId } = await registration.json();
+    const id = await serviceFor(clinic, specialty);
+    const association = `/professionals/${professionalId}/services/${id}`;
+    assert.equal((await call('PUT', association)).status, 204);
+    assert.equal((await call('PUT', association)).status, 204);
+    assert.deepEqual((await appointments!.pool.query('select * from professional_service where service_id=$1', [id])).rows,
+      [{ professional_id: professionalId, service_id: id, clinic_id: clinic, specialty_id: specialty }]);
+    const date = '2099-01-05';
+    const hours = { workingHours: [{ weekday: new Date(date).getUTCDay(), startTime: '09:00', endTime: '11:00' }] };
+    assert.equal((await call('PUT', `/professionals/${professionalId}/working-hours`, adminToken, hours)).status, 200);
+    const availability = `/availability/professionals/${professionalId}?serviceId=${id}&date=${date}`;
+    const response = await call('GET', availability, receptionToken);
+    assert.equal(response.status, 200);
+    const { slots } = await response.json();
+    assert.ok(slots.length >= 2);
+    assert.equal((await call('GET', availability, professionalToken)).status, 200);
+    const patientId = randomUUID();
+    await users!.pool.query(`insert into patient(patient_id,clinic_id,identification,full_name,birth_date)
+      values ($1,$2,'RF4','Test Patient','1990-01-01')`, [patientId,clinic]);
+    const booking = { patientId, professionalId, serviceId: id, startsAt: slots[0].startsAt };
+    assert.equal((await call('POST', '/appointments', receptionToken, booking)).status, 201);
+    await clinics!.pool.query('update service set specialty_id=$1 where service_id=$2', [otherSpecialty,id]);
+    assert.equal((await call('PUT', association)).status, 422);
+    assert.equal((await call('GET', availability, receptionToken)).status, 422);
+    const stale = await call('POST', '/appointments', receptionToken, { ...booking, startsAt: slots[1].startsAt });
+    assert.equal((await stale.json()).code, 'service_not_offered');
+  });
+
+  test('association rejects incompatible specialties, foreign IDs and unauthorized roles', async () => {
+    const registration = await request({ ...input, specialtyIds: [specialty] });
+    assert.equal(registration.status, 201);
+    const { professionalId } = await registration.json();
+    const local = await serviceFor(clinic, otherSpecialty);
+    const foreign = await serviceFor(otherClinic, specialty);
+    const foreignProfessional = randomUUID();
+    await users!.pool.query(`insert into professional(professional_id, app_user_id, clinic_id, full_name)
+      values ($1,$2,$3,'Foreign')`, [foreignProfessional, foreignUser, otherClinic]);
+    for (const [prof, svc, token, status, code] of [
+      [professionalId, local, receptionToken, 403, 'forbidden'],
+      [professionalId, local, professionalToken, 403, 'forbidden'],
+      [professionalId, local, adminToken, 422, 'specialty_mismatch'],
+      [professionalId, foreign, adminToken, 404, 'not_found'],
+      [professionalId, randomUUID(), adminToken, 404, 'not_found'],
+      [foreignProfessional, local, adminToken, 404, 'not_found'],
+      [randomUUID(), local, adminToken, 404, 'not_found'],
+    ] as const) {
+      const res = await call('PUT', `/professionals/${prof}/services/${svc}`, token);
+      assert.equal(res.status, status);
+      assert.deepEqual(await res.json(), { error: 'Request rejected.', code });
+    }
+    const spoof = await call('PUT', `/professionals/${professionalId}/services/${local}`, adminToken, { clinicId: otherClinic });
+    assert.equal(spoof.status, 422);
+    assert.equal((await appointments!.pool.query('select 1 from professional_service where professional_id=$1', [professionalId])).rowCount, 0);
+  });
+
   test('normal startup registers atomically through the real catalog without changing app_user', async () => {
     assert.equal((await fetch(`${base}/health`)).status, 200);
     const before = (await users!.pool.query('SELECT * FROM app_user ORDER BY app_user_id')).rows;
@@ -195,6 +307,7 @@ describe.skipIf(!url)('RF4 professional registration through users and clinics',
     assert.equal(response.status, 201);
     const dto = await response.json() as { professionalId: string };
     assert.match(dto.professionalId, /^[0-9a-f-]{36}$/);
+    assert.equal(claim, dto.professionalId);
     assert.deepEqual(dto, { ...input, professionalId: dto.professionalId, isActive: true });
     assert.deepEqual((await users!.pool.query(`SELECT clinic_id, app_user_id, full_name, is_active
       FROM professional WHERE professional_id = $1`, [dto.professionalId])).rows,
@@ -242,7 +355,7 @@ describe.skipIf(!url)('RF4 professional registration through users and clinics',
     `), { dbRoles: MEDICITAS_APP_ROLE }), { status: 403, code: 'forbidden' });
   });
 
-  test('catalog failure is a safe 503 and never starts local registration', async () => {
+  test('owner failures leave either no profile or one committed profile whose claim can be retried', async () => {
     catalogFails = true;
     const response = await request();
     assert.equal(response.status, 503);
@@ -250,5 +363,12 @@ describe.skipIf(!url)('RF4 professional registration through users and clinics',
     assert.equal(response.headers.get('retry-after'), '1');
     assert.equal(catalogCalls, 1);
     await assertNoProfiles();
+    catalogFails = false;
+    identityFails = true;
+    assert.equal((await request()).status, 503);
+    const [{ professional_id: id }] = (await users!.pool.query('SELECT professional_id FROM professional')).rows;
+    identityFails = false;
+    assert.equal((await request()).status, 200);
+    assert.equal(claim, id);
   });
 });

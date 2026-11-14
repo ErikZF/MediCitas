@@ -5,6 +5,7 @@ import type { TenantContext } from '@medicitas/db';
 
 export interface BookableService {
   serviceId: string;
+  specialtyId: string;
   /** Duration of the service; it fixes ends_at (invariant I4). */
   durationMinutes: number;
   /** IANA time zone of the clinic, to read working hours in local time. */

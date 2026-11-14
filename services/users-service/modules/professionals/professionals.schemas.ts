@@ -3,6 +3,12 @@ import { ProfessionalError } from './professionals.errors.ts';
 
 const uuid = z.uuid().transform((value) => value.toLowerCase());
 
+export function parseProfessionalId(input: unknown) {
+  const id = uuid.safeParse(input);
+  if (!id.success) throw new ProfessionalError('not_found');
+  return id.data;
+}
+
 const professionalInput = z.strictObject({
   appUserId: uuid,
   fullName: z.string().trim().min(1).max(128),

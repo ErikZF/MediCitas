@@ -12,7 +12,7 @@ const options = { dbRoles: MEDICITAS_APP_ROLE, retry: false } as const;
 function authorize({ctx}: Actor, permission: Permission) {
   if (!hasPermission(ctx.role, permission)) throw new UserManagementError('forbidden');
 }
-async function checkActor(tx: Transaction, {ctx, subject}: Actor) {
+export async function checkActor(tx: Transaction, {ctx, subject}: Actor) {
   const [row] = await tx.select({id: appUser.appUserId}).from(appUser).where(and(
     eq(appUser.appUserId, ctx.userId), eq(appUser.keycloakSub, subject), eq(appUser.roleCode, ctx.role),
     eq(appUser.isActive,true), ctx.clinicId ? eq(appUser.clinicId, ctx.clinicId) : isNull(appUser.clinicId),

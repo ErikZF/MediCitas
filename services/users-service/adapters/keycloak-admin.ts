@@ -16,7 +16,9 @@ function attributes(a: Assignment) {
     ...(a.professionalId ? { professional_id: [a.professionalId] } : {}) };
 }
 
-export function keycloakAdmin(env = process.env): IdentityAdmin {
+export function keycloakAdmin(env = process.env): IdentityAdmin & {
+  syncProfessionalId(sub: string, clinicId: string, appUserId: string, professionalId: string): Promise<boolean>;
+} {
   async function request(path: string, method: string, status: number, body?: unknown) {
     try {
       const { KEYCLOAK_USER_ADMIN_SECRET: secret, REALM_NAME: realm } = env;
@@ -43,11 +45,28 @@ export function keycloakAdmin(env = process.env): IdentityAdmin {
     }
   }
   const user = (sub: string) => '/users/' + z.uuid().parse(sub);
+  // RF4 updates one attribute. RF2 remains the owner of roles and enabled state.
+  async function syncProfessionalId(sub: string, clinicId: string, appUserId: string, professionalId: string) {
+    try {
+      const path = user(sub);
+      const { attributes: current } = z.object({ attributes: z.record(z.string(), z.array(z.string())) })
+        .parse(await (await request(path, 'GET', 200)).json());
+      const matches = (key: string, value: string) => current[key]?.length === 1 && current[key][0] === value;
+      if (!matches('clinic_id', clinicId) || !matches('app_user_id', appUserId) || !matches('role', 'professional')) {
+        throw unavailable();
+      }
+      if (matches('professional_id', professionalId)) return false;
+      if (current.professional_id?.length) throw unavailable();
+      await request(path, 'PUT', 204, { attributes: { ...current, professional_id: [professionalId] } });
+      return true;
+    } catch { throw unavailable(); }
+  }
   async function roles(path: string) {
     try { return roleList.parse(await (await request(path, 'GET', 200)).json()); }
     catch { throw unavailable(); }
   }
   return {
+    syncProfessionalId,
     async create(username, password, a) {
       const response = await request('/users', 'POST', 201, { username, enabled: false, attributes: attributes(a),
         credentials: [{ type: 'password', value: password, temporary: true }] });

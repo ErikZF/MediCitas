@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { test } from 'vitest';
 import { keycloakAdmin } from '../../adapters/keycloak-admin.ts';
+import { createHttpSpecialtyCatalog } from '../../adapters/specialty-catalog.http.ts';
 import { createTestDatabase } from '../helpers/test-database.ts';
 import { createApp } from '../../app.ts';
 
@@ -54,7 +55,8 @@ test.skipIf(!process.env.TEST_DATABASE_URL || process.env.J2_TEMP_REALM !== '1')
       await database.pool.query(readFileSync(new URL('../../../../database/updates/' + script, import.meta.url), 'utf8'));
     }
     const u=await listen(), c=await listen();
-    u.server.on('request',createApp({management:{db:users.db,identity},clinicsUrl:c.url}));
+    u.server.on('request',createApp({management:{db:users.db,identity},clinicsUrl:c.url,
+      professionals:{db:users.db,specialties:createHttpSpecialtyCatalog(c.url),syncProfessionalId:identity.syncProfessionalId}}));
     const {createApp:clinicsApp}=await import(new URL('../../../clinics-service/app.ts',import.meta.url).href);
     c.server.on('request',clinicsApp({serviceCatalog:{db:clinics.db},usersUrl:u.url}));
     const platformToken=await signin(username,password);
@@ -94,11 +96,23 @@ test.skipIf(!process.env.TEST_DATABASE_URL || process.env.J2_TEMP_REALM !== '1')
     const assigned=await (await admin(path+'/role-mappings/realm','GET',200)).json() as {name:string}[];
     assert.ok(assigned.some(r=>r.name==='professional'));
     assert.ok(!assigned.some(r=>r.name==='receptionist'));
+    const specialtyId = randomUUID();
+    await clinics.pool.query('insert into specialty(specialty_id, name) values ($1,$2)', [specialtyId,'General']);
+    const registered = await post(u.url+'/professionals',bearer,{
+      appUserId:user.appUserId, fullName:'Clinic professional', specialtyIds:[specialtyId],
+    });
+    assert.equal(registered.status,201);
+    const { professionalId } = await registered.json();
+    const fresh = await signin(receptionist,password);
+    const claims = JSON.parse(Buffer.from(fresh.split('.')[1]!, 'base64url').toString());
+    assert.equal(claims.professional_id,professionalId);
+    assert.equal(claims.clinic_id,created.clinicId);
+    assert.ok(claims.realm_access.roles.includes('professional'));
     const removed=await fetch(u.url+'/users/'+user.appUserId,{method:'DELETE',headers:{authorization:'Bearer '+bearer}});
     assert.equal(removed.status,204);
     const account=await (await admin(path,'GET',200)).json();
     assert.equal(account.enabled,false);
-    assert.equal(account.attributes.professional_id,undefined);
+    assert.deepEqual(account.attributes.professional_id,[professionalId]);
   } finally {
     for (const server of servers) await new Promise<void>(resolve=>server.close(()=>resolve()));
     try {for(const sub of subjects) await identity.remove(sub);}
