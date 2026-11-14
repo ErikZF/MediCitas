@@ -2,7 +2,7 @@ import type { RequestHandler } from 'express';
 import { hasPermission, type Permission } from './permissions.ts';
 import { getVerifiedRoles } from './verified-identity.ts';
 
-/** Requires requiereToken first, resource ownership remains a domain concern. */
+/** Requires requireToken first, resource ownership remains a domain concern. */
 export function requirePermission(permission: Permission): RequestHandler {
   return (req, res, next) => {
     const roles = getVerifiedRoles(req);

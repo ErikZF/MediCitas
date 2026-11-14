@@ -2,12 +2,11 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { Request, Response, NextFunction } from "express";
 import { clearVerifiedRoles, getVerifiedRoles, recordVerifiedRoles } from './verified-identity.ts';
 import { AuthConfigurationError, readAuthConfig } from './config.ts';
-// TODO: Change file to english
-// JWKS from keycloak, we need to have them as cache, and download them once
+// Cache Keycloak JWKS keys and download them once per URL.
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 let cachedJwksUrl: string | undefined;
 
-function obtenerJwks(url: URL) {
+function getJwks(url: URL) {
     if (!jwks || cachedJwksUrl !== url.href) {
         jwks = createRemoteJWKSet(
             url
@@ -27,7 +26,7 @@ export interface TenantContext {
     professionalId?: string | null;
 }
 
-export interface UsuarioAutenticado {
+export interface AuthenticatedUser {
     id: string;
     username: string;
     roles: string[];
@@ -40,7 +39,7 @@ export interface UsuarioAutenticado {
 
 declare module "express-serve-static-core" {
     interface Request {
-        usuario?: UsuarioAutenticado;
+        user?: AuthenticatedUser;
     }
 }
 
@@ -51,27 +50,27 @@ function isUuid(val: unknown): val is string {
 }
 
 export function extractTenantContext(req: Request): TenantContext | null {
-    return req.usuario?.tenantContext ?? null;
+    return req.user?.tenantContext ?? null;
 }
 
 
-// 401: TOken has to be valid
-export async function requiereToken(req: Request, res: Response, next: NextFunction) {
+// 401: verify that a valid Bearer JWT is provided (signature, expiration, issuer, audience)
+export async function requireToken(req: Request, res: Response, next: NextFunction) {
   clearVerifiedRoles(req);
-  delete req.usuario;
+  delete req.user;
   const authHeader = req.headers.authorization;
 
-  // If it does not have a Bearer
+  // Reject immediately if the Authorization header does not use Bearer
   if (typeof authHeader !== "string" || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "falta el token de acceso" });
+    return res.status(401).json({ error: "Missing access token." });
   }
 
   const token = authHeader.slice("Bearer ".length);
 
   try {
-    // Get config and verify with the jwks
+    // Load auth config and verify the JWT against Keycloak's JWKS
     const config = readAuthConfig();
-    const { payload } = await jwtVerify(token, obtenerJwks(config.jwksUrl), {
+    const { payload } = await jwtVerify(token, getJwks(config.jwksUrl), {
       issuer: config.issuer,
       audience: config.audience,
       requiredClaims: ['exp', 'sub'],
@@ -122,7 +121,7 @@ export async function requiereToken(req: Request, res: Response, next: NextFunct
       }
     }
 
-    req.usuario = {
+    req.user = {
       id: payload.sub,
       username: (payload.preferred_username as string) ?? '',
       roles: [...roles],
@@ -143,26 +142,26 @@ export async function requiereToken(req: Request, res: Response, next: NextFunct
     if (configurationFailed) {
       return res.status(500).json({ error: 'Authentication unavailable.' });
     }
-    return res.status(401).json({ error: "token inválido o expirado" });
+    return res.status(401).json({ error: "Invalid or expired token." });
   }
 }
 
-// 403: valid token, but does not have a role
-export function requiereRol(rol: string) {
+// 403: valid token, but missing the required role
+export function requireRole(role: string) {
   return (req: Request, res: Response, next: NextFunction) => {
     const roles = getVerifiedRoles(req);
     if (roles === undefined) {
       return res.status(401).json({ error: 'Authentication required.' });
     }
-    if (!roles.includes(rol)) {
-      return res.status(403).json({ error: `falta el rol '${rol}'` });
+    if (!roles.includes(role)) {
+      return res.status(403).json({ error: `Missing role '${role}'.` });
     }
     next();
   };
 }
 
-// Token must have all attributes for the multi tenant schema: clinic_id, app_user_id, rol 
-export async function requiereTenantContext(req: Request, res: Response, next: NextFunction) {
+// Token must carry all attributes required by the multi-tenant schema: clinic_id, app_user_id, role
+export async function requireTenantContext(req: Request, res: Response, next: NextFunction) {
   const proceed = () => {
     const ctx = extractTenantContext(req);
     if (!ctx) {
@@ -172,8 +171,8 @@ export async function requiereTenantContext(req: Request, res: Response, next: N
     next();
   };
 
-  if (req.usuario) {
+  if (req.user) {
     return proceed();
   }
-  return requiereToken(req, res, proceed);
+  return requireToken(req, res, proceed);
 }

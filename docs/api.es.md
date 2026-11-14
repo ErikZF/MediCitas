@@ -426,13 +426,12 @@ auditoría; leer eventos no demuestra que RF18 los esté produciendo.
 
 Estas respuestas complementan los códigos específicos de cada operación. La primera
 falla de middleware, validación o dominio decide la respuesta. Los textos se
-conservan tal como los emite el código, incluidos los dos mensajes en español que hoy
-emite la autenticación.
+conservan tal como los emite el código.
 
 | HTTP | Respuesta / causa |
 | --- | --- |
 | 400 | `{"error":"Bad request."}` para JSON mal formado |
-| 401 | Falta de contexto: `{"error":"Authentication required."}`. Con `requiereToken`: `{"error":"falta el token de acceso"}` o `{"error":"token inválido o expirado"}` |
+| 401 | Falta de contexto: `{"error":"Authentication required."}`. Con `requireToken`: `{"error":"Missing access token."}` o `{"error":"Invalid or expired token."}` |
 | 403 | Dominio, permisos o RLS: `{"error":"Request rejected.","code":"forbidden"}` |
 | 404 | Recurso: `{"error":"Request rejected.","code":"not_found"}`. Ruta inexistente o no montada: `{"error":"Route not found."}` |
 | 409 | Conflictos de cada ruta; el adaptador de base de datos también mapea `duplicate`, `overlap` y `concurrency_conflict` (reintentos de la transacción agotados), con `error: "Request rejected."` |

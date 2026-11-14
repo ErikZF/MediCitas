@@ -4,7 +4,7 @@ import type { Server } from 'node:http';
 import express from 'express';
 import type { Request, Response } from 'express';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, test, vi } from 'vitest';
-import { requiereRol, requiereToken } from '../src/auth.ts';
+import { requireRole, requireToken } from '../src/auth.ts';
 import { requirePermission } from '../src/authorization.ts';
 import type { Permission } from '../src/permissions.ts';
 
@@ -26,7 +26,7 @@ async function authenticate(req: Request, roles: unknown) {
   verify.mockResolvedValue({ payload: { sub: 'subject', preferred_username: 'test', realm_access: { roles } } });
   const res = response();
   const next = vi.fn();
-  await requiereToken(req, res as unknown as Response, next);
+  await requireToken(req, res as unknown as Response, next);
   return { res, next };
 }
 
@@ -53,16 +53,16 @@ describe('permission middleware', () => {
     assert.equal(next.mock.calls.length, 0);
   });
 
-  test('does not trust an assigned usuario, body, query or role headers', () => {
+  test('does not trust an assigned user, body, query or role headers', () => {
     const req = request();
-    req.usuario = { id: 'subject', username: 'test', roles: ['clinic_admin'] };
+    req.user = { id: 'subject', username: 'test', roles: ['clinic_admin'] };
     req.body = { roles: ['clinic_admin'] };
     req.query = { roles: ['clinic_admin'] };
     req.headers['x-roles'] = 'clinic_admin';
     const { res, next } = authorize(req);
     assert.equal(res.status.mock.calls[0]?.[0], 401);
     assert.equal(next.mock.calls.length, 0);
-    requiereRol('clinic_admin')(req, res as unknown as Response, next);
+    requireRole('clinic_admin')(req, res as unknown as Response, next);
     assert.equal(res.status.mock.calls[1]?.[0], 401);
     assert.equal(next.mock.calls.length, 0);
   });
@@ -91,7 +91,7 @@ describe('permission middleware', () => {
     const authentication = await authenticate(req, roles);
     assert.equal(authentication.res.status.mock.calls[0]?.[0], 401);
     assert.equal(authentication.next.mock.calls.length, 0);
-    assert.equal(req.usuario, undefined);
+    assert.equal(req.user, undefined);
     const { res, next } = authorize(req);
     assert.equal(res.status.mock.calls[0]?.[0], 401);
     assert.equal(next.mock.calls.length, 0);
@@ -100,7 +100,7 @@ describe('permission middleware', () => {
   test('missing roles grant no permissions', async () => {
     const req = request();
     await authenticate(req, undefined);
-    assert.deepEqual(req.usuario?.roles, []);
+    assert.deepEqual(req.user?.roles, []);
     assert.equal(authorize(req).res.status.mock.calls[0]?.[0], 403);
   });
 
@@ -111,21 +111,21 @@ describe('permission middleware', () => {
     verify.mockRejectedValue(new Error('Verification failed'));
     const res = response();
     const next = vi.fn();
-    await requiereToken(req, res as unknown as Response, next);
+    await requireToken(req, res as unknown as Response, next);
     assert.equal(res.status.mock.calls[0]?.[0], 401);
     assert.equal(next.mock.calls.length, 0);
-    assert.equal(req.usuario, undefined);
+    assert.equal(req.user, undefined);
     assert.equal(authorize(req).res.status.mock.calls[0]?.[0], 401);
   });
 
-  test('keeps an immutable snapshot when usuario is changed later', async () => {
+  test('keeps an immutable snapshot when user is changed later', async () => {
     const req = request();
     await authenticate(req, ['professional']);
-    req.usuario!.roles.push('clinic_admin');
+    req.user!.roles.push('clinic_admin');
     assert.equal(authorize(req).res.status.mock.calls[0]?.[0], 403);
     const res = response();
     const next = vi.fn();
-    requiereRol('clinic_admin')(req, res as unknown as Response, next);
+    requireRole('clinic_admin')(req, res as unknown as Response, next);
     assert.equal(res.status.mock.calls[0]?.[0], 403);
     assert.equal(next.mock.calls.length, 0);
   });
@@ -135,10 +135,10 @@ describe('permission middleware', () => {
     await authenticate(req, ['not_clinic_admin', 'receptionist']);
     const res = response();
     const next = vi.fn();
-    requiereRol('clinic_admin')(req, res as unknown as Response, next);
+    requireRole('clinic_admin')(req, res as unknown as Response, next);
     assert.equal(res.status.mock.calls[0]?.[0], 403);
     assert.equal(next.mock.calls.length, 0);
-    requiereRol('receptionist')(req, res as unknown as Response, next);
+    requireRole('receptionist')(req, res as unknown as Response, next);
     assert.equal(res.status.mock.calls.length, 1);
     assert.equal(next.mock.calls.length, 1);
   });
@@ -155,7 +155,7 @@ describe('permission middleware', () => {
     delete req.headers.authorization;
     const res = response();
     const next = vi.fn();
-    await requiereToken(req, res as unknown as Response, next);
+    await requireToken(req, res as unknown as Response, next);
     assert.equal(res.status.mock.calls[0]?.[0], 401);
     assert.equal(next.mock.calls.length, 0);
     assert.equal(authorize(req).res.status.mock.calls[0]?.[0], 401);
@@ -176,12 +176,12 @@ describe('permission middleware over HTTP (JWT verification mocked)', () => {
   beforeAll(async () => {
     const app = express();
     app.use(express.json());
-    app.post('/book', requiereToken, requirePermission('appointment:book'), (_req, res) => {
+    app.post('/book', requireToken, requirePermission('appointment:book'), (_req, res) => {
       handler();
       res.status(200).json({ allowed: true });
     });
     app.post('/without-auth', (req, _res, next) => {
-      req.usuario = { id: 'subject', username: 'test', roles: ['clinic_admin'] };
+      req.user = { id: 'subject', username: 'test', roles: ['clinic_admin'] };
       next();
     }, requirePermission('appointment:book'), (_req, res) => {
       handler();
@@ -225,7 +225,7 @@ describe('permission middleware over HTTP (JWT verification mocked)', () => {
   }
 
   test('401 without a token ignores roles supplied through HTTP', async () => {
-    assert.deepEqual(await call(), { status: 401, body: { error: 'falta el token de acceso' } });
+    assert.deepEqual(await call(), { status: 401, body: { error: 'Missing access token.' } });
     assert.equal(verify.mock.calls.length, 0);
     assert.equal(handler.mock.calls.length, 0);
   });
@@ -234,7 +234,7 @@ describe('permission middleware over HTTP (JWT verification mocked)', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     verify.mockRejectedValue(new Error('Internal verification detail'));
     assert.deepEqual(await call('/book', 'rejected-token'), {
-      status: 401, body: { error: 'token inválido o expirado' },
+      status: 401, body: { error: 'Invalid or expired token.' },
     });
     assert.equal(verify.mock.calls[0]?.[0], 'rejected-token');
     assert.equal(handler.mock.calls.length, 0);
@@ -258,11 +258,11 @@ describe('permission middleware over HTTP (JWT verification mocked)', () => {
   test('401 for malformed roles returned by the simulated verifier', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     verifiedPayload(['receptionist', 42]);
-    assert.deepEqual(await call('/book', 'test-token'), { status: 401, body: { error: 'token inválido o expirado' } });
+    assert.deepEqual(await call('/book', 'test-token'), { status: 401, body: { error: 'Invalid or expired token.' } });
     assert.equal(handler.mock.calls.length, 0);
   });
 
-  test('401 when authentication middleware is omitted even with an assigned usuario', async () => {
+  test('401 when authentication middleware is omitted even with an assigned user', async () => {
     assert.deepEqual(await call('/without-auth', 'test-token'), { status: 401, body: { error: 'Authentication required.' } });
     assert.equal(verify.mock.calls.length, 0);
     assert.equal(handler.mock.calls.length, 0);

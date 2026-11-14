@@ -1,5 +1,5 @@
 import express, { type Express } from 'express';
-import { extractTenantContext, requiereToken } from '@medicitas/auth';
+import { extractTenantContext, requireToken } from '@medicitas/auth';
 import { errorHandler, notFoundHandler } from '@medicitas/http';
 import { requireTenantContext, type ContextResolver } from './http/context.ts';
 import { captureAuthorization } from './http/request-auth.ts';
@@ -44,7 +44,7 @@ export function createApp(deps?: AppDeps): Express {
   app.use(routes);
   if (deps !== undefined) {
     const authenticated = deps.resolveContext === undefined
-      ? [requiereToken, requireTenantContext(extractTenantContext), captureAuthorization]
+      ? [requireToken, requireTenantContext(extractTenantContext), captureAuthorization]
       : [requireTenantContext(deps.resolveContext), captureAuthorization];
     if (deps.schedule !== undefined) {
       app.use('/professionals', ...authenticated, createScheduleRouter(deps.schedule));

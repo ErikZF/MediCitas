@@ -1,5 +1,5 @@
 import express, { type Express } from 'express';
-import { extractTenantContext, requiereToken } from '@medicitas/auth';
+import { extractTenantContext, requireToken } from '@medicitas/auth';
 import { errorHandler, notFoundHandler } from '@medicitas/http';
 import { requireTenantContext, type ContextResolver } from './http/context.ts';
 import { createAuditQueryRouter, type AuditQueryDeps } from './modules/audit-query/audit-query.routes.ts';
@@ -19,7 +19,7 @@ export function createApp(deps?: AppDeps): Express {
   app.use(routes);
   if (deps?.auditQuery !== undefined) {
     const withContext = deps.resolveContext === undefined
-      ? [requiereToken, requireTenantContext(extractTenantContext)]
+      ? [requireToken, requireTenantContext(extractTenantContext)]
       : [requireTenantContext(deps.resolveContext)];
     app.use('/audit/logs', ...withContext, createAuditQueryRouter(deps.auditQuery));
   }

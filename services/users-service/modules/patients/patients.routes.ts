@@ -3,7 +3,7 @@ import { extractTenantContext } from '@medicitas/auth';
 import { PatientError } from './patients.errors.ts';
 import { assertPatientAccess, getPatientMembership, createPatient, updatePatient, type PatientsDeps } from './patients.service.ts';
 
-/** Mount after requiereToken and requiereTenantContext. No client identity headers. */
+/** Mount after requireToken and requireTenantContext. No client identity headers. */
 export function createPatientsRouter(deps: PatientsDeps): Router {
   const router = Router();
   const noQuery = (query: object) => {

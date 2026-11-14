@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http';
 import type { Request, Response } from 'express';
 import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, test, vi } from 'vitest';
-import { requiereToken } from '../src/auth.ts';
+import { requireToken } from '../src/auth.ts';
 import { requirePermission } from '../src/authorization.ts';
 
 // Real jose verification and a local public JWKS; private keys exist only in memory.
@@ -65,7 +65,7 @@ describe('signed JWT authentication', () => {
     const res = { status: vi.fn(), json: vi.fn() };
     res.status.mockReturnValue(res);
     const next = vi.fn();
-    await requiereToken(req, res as unknown as Response, next);
+    await requireToken(req, res as unknown as Response, next);
     return { req, res, next };
   }
 
@@ -99,9 +99,9 @@ describe('signed JWT authentication', () => {
   ])('rejects $name', async ({ options }) => {
     const { req, res, next } = await authenticate(await signed(options));
     assert.equal(res.status.mock.calls[0]?.[0], 401);
-    assert.deepEqual(res.json.mock.calls[0]?.[0], { error: 'token inválido o expirado' });
+    assert.deepEqual(res.json.mock.calls[0]?.[0], { error: 'Invalid or expired token.' });
     assert.equal(next.mock.calls.length, 0);
-    assert.equal(req.usuario, undefined);
+    assert.equal(req.user, undefined);
     assert.deepEqual(vi.mocked(console.error).mock.calls, [[JSON.stringify({ level: 'error', event: 'jwt_verification_failed' })]]);
     const allowed = vi.fn();
     requirePermission('appointment:book')(req, res as unknown as Response, allowed);
