@@ -8,32 +8,32 @@ import { integer, jsonb, pgTable, primaryKey, smallint, text, time, timestamp, u
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
 export const workingHours = pgTable('working_hours', {
-  workingHoursId: uuid('working_hours_id').primaryKey().defaultRandom(),
+  workingHoursId: uuid('working_hours_id').notNull().defaultRandom(),
   clinicId: uuid('clinic_id').notNull(),
   professionalId: uuid('professional_id').notNull(),
   weekday: smallint('weekday').notNull(),
   startTime: time('start_time').notNull(),
   endTime: time('end_time').notNull(),
-});
+}, (table) => [primaryKey({ columns: [table.clinicId, table.workingHoursId] })]);
 
 export const scheduleBlock = pgTable('schedule_block', {
-  scheduleBlockId: uuid('schedule_block_id').primaryKey().defaultRandom(),
+  scheduleBlockId: uuid('schedule_block_id').notNull().defaultRandom(),
   clinicId: uuid('clinic_id').notNull(),
   professionalId: uuid('professional_id').notNull(),
   startsAt: timestamptz('starts_at').notNull(),
   endsAt: timestamptz('ends_at').notNull(),
   reason: varchar('reason', { length: 256 }),
-});
+}, (table) => [primaryKey({ columns: [table.clinicId, table.scheduleBlockId] })]);
 
 export const professionalService = pgTable('professional_service', {
   professionalId: uuid('professional_id').notNull(),
   serviceId: uuid('service_id').notNull(),
   clinicId: uuid('clinic_id').notNull(),
   specialtyId: uuid('specialty_id').notNull(),
-}, (table) => [primaryKey({ columns: [table.professionalId, table.serviceId] })]);
+}, (table) => [primaryKey({ columns: [table.clinicId, table.professionalId, table.serviceId] })]);
 
 export const appointment = pgTable('appointment', {
-  appointmentId: uuid('appointment_id').primaryKey().defaultRandom(),
+  appointmentId: uuid('appointment_id').notNull().defaultRandom(),
   clinicId: uuid('clinic_id').notNull(),
   professionalId: uuid('professional_id').notNull(),
   patientId: uuid('patient_id').notNull(),
@@ -50,27 +50,27 @@ export const appointment = pgTable('appointment', {
   statusChangedAt: timestamptz('status_changed_at').notNull().defaultNow(),
   statusChangedBy: uuid('status_changed_by'),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
-});
+}, (table) => [primaryKey({ columns: [table.clinicId, table.appointmentId] })]);
 
 export const clinicalNote = pgTable('clinical_note', {
-  clinicalNoteId: uuid('clinical_note_id').primaryKey().defaultRandom(),
+  clinicalNoteId: uuid('clinical_note_id').notNull().defaultRandom(),
   appointmentId: uuid('appointment_id').notNull(),
   clinicId: uuid('clinic_id').notNull(),
   professionalId: uuid('professional_id').notNull(),
   content: text('content').notNull(),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
-});
+}, (table) => [primaryKey({ columns: [table.clinicId, table.clinicalNoteId] })]);
 
 export const outbox = pgTable('outbox', {
-  eventId: uuid('event_id').primaryKey().defaultRandom(),
+  eventId: uuid('event_id').notNull().defaultRandom(),
   clinicId: uuid('clinic_id').notNull(),
   aggregateId: uuid('aggregate_id').notNull(),
   eventType: varchar('event_type', { length: 64 }).notNull(),
   payload: jsonb('payload').notNull(),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   publishedAt: timestamptz('published_at'),
-});
+}, (table) => [primaryKey({ columns: [table.clinicId, table.eventId] })]);
 
 export const idempotencyKeys = pgTable('idempotency_keys', {
   clinicId: uuid('clinic_id').notNull(),
