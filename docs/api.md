@@ -258,7 +258,8 @@ Appointment = {
   appointmentId: UUID, professionalId: UUID, patientId: UUID, serviceId: UUID,
   startsAt: ISO, endsAt: ISO, durationMinutes: number,
   status: "booked"|"attended"|"no_show"|"cancelled"|"rescheduled",
-  cancelReason: string|null, rescheduledFromId: UUID|null
+  cancelReason: string|null, rescheduledFromId: UUID|null,
+  createdAt: ISO, statusChangedAt: ISO, statusChangedBy: UUID|null, updatedAt: ISO
 }
 ```
 
