@@ -1,0 +1,159 @@
+# Concurrency: the last slot (card E11)
+
+**English** · [Español](concurrency.es.md)
+
+> Two receptionists book the last slot of the agenda at exactly the same time.
+> What does the system do, why, and how is it shown?
+
+## The answer
+
+One booking is granted with **201** and the other is rejected with **409 `slot_taken`**.
+The database never holds two overlapping `booked` appointments for that professional (I1).
+This does not depend on timing, on the number of service replicas or on the cache:
+PostgreSQL decides it at the moment of the `INSERT`, through an exclusion constraint.
+
+## What happens, step by step
+
+```text
+Receptionist A (T1)                           Receptionist B (T2)
+-------------------                           -------------------
+BEGIN (READ COMMITTED)                        BEGIN (READ COMMITTED)
+advisory lock, shared, on the professional    advisory lock, shared (does not wait for T1)
+checks: service offered, inside working       same checks: they pass too, because T1
+hours, no block                               has not committed anything yet
+INSERT appointment 09:00-09:30                INSERT appointment 09:00-09:30
+  -> takes the slot in the GiST index           -> finds T1's tuple in the index:
+                                                   waits for T1 to finish
+COMMIT -> 201                                 T1 committed -> conflict -> 23P01
+                                              ROLLBACK -> 409 slot_taken
+```
+
+Both transactions pass every check, because each one only sees committed data. The
+checks are not what protects the slot. The protection is the constraint in
+[`database/appointments/init.sql`](../database/appointments/init.sql):
+
+```sql
+CONSTRAINT no_overlap_professional EXCLUDE USING gist (
+    clinic_id                           WITH =,
+    professional_id                     WITH =,
+    tstzrange(starts_at, ends_at, '[)') WITH &&
+) WHERE (status = 'booked')
+```
+
+- **`EXCLUDE ... WITH &&`** forbids two rows whose intervals overlap. The engine checks it
+  against rows that other transactions have inserted but not yet committed, and makes
+  the second one wait for the first. If the first commits, the second fails with `23P01`;
+  if the first rolls back, the second goes through.
+- **`'[)'`** includes the start and excludes the end, so 09:00-09:30 and 09:30-10:00 do
+  not overlap: back-to-back appointments are allowed.
+- **`WHERE (status = 'booked')`** only counts active appointments. Cancelling or
+  rescheduling frees the time in the same `COMMIT` (I7).
+- `@medicitas/db` maps `23P01` on this constraint to **409 `slot_taken`**, and on
+  `no_overlap_patient` to **409 `patient_overlap`** (I2). The client never sees SQLSTATE.
+
+## Isolation level: READ COMMITTED
+
+`withTenantTx` sets it explicitly on every transaction (`SET TRANSACTION ISOLATION LEVEL READ COMMITTED`),
+so it does not depend on what the driver or the ORM chose by default.
+
+**It is enough** because correctness does not come from what a transaction reads. Two
+transactions that read "the slot is free" at the same time is exactly the case shown
+above, and the constraint resolves it at write time.
+
+**Why not SERIALIZABLE.**
+
+- It would also prevent the double booking, but by aborting one transaction with `40001`.
+  That is a generic error: the service would have to retry and only then learn that the
+  slot is taken. With the constraint, the answer is direct and specific (`slot_taken`).
+- It tracks read dependencies (predicate locks), so it aborts transactions that did not
+  actually conflict. Under load that means more retries and more latency.
+- It protects nothing extra here: every invariant that matters is already a constraint,
+  a trigger or a lock.
+
+**Why not REPEATABLE READ.** It gives each transaction a fixed snapshot, which does not
+help: both would still see the slot as free. In PostgreSQL it can also abort an update
+with `40001` when a row changed after the snapshot.
+
+## The other invariants under concurrency
+
+| Invariant | What enforces it | Where |
+| --- | --- | --- |
+| **I1** no overlap per professional | `no_overlap_professional` (EXCLUDE) | `init.sql` |
+| **I2** no overlap per patient in a clinic | `no_overlap_patient` (EXCLUDE) | `init.sql` |
+| **I3** inside working hours, outside blocks | Checks inside the transaction plus a **transaction advisory lock** per professional: shared for bookings, exclusive for schedule changes | `db/locks.ts` |
+| **I4** duration fixed by the service | The body cannot send it; `CHECK (ends_at = starts_at + duration_minutes)` | `slot-rules.ts`, `init.sql` |
+| **I7** cancelling frees the slot at once | The constraints only count `booked`; the change and the release are one `COMMIT` | `init.sql`, `lifecycle.service.ts` |
+| **RF13** valid transitions only | `SELECT ... FOR UPDATE` on the appointment, plus a trigger that rejects leaving a final state | `lifecycle.service.ts`, `init.sql` |
+
+**Why I3 needs a lock.** A booking checks the blocks, and a new block looks for the
+bookings it overlaps. Without coordination both can run at the same time: the booking
+sees no block, the block sees no booking, and both commit. The lock forces an order:
+many bookings run in parallel (shared), but a schedule change waits for them and they
+wait for it (exclusive). Whoever goes second sees the first: a booking that comes later
+gets **422 `professional_unavailable`**, and a block that comes later returns the booking
+in its `conflicts` list (RF6). It is a transaction-level lock (`pg_advisory_xact_lock`):
+it is released on `COMMIT` or `ROLLBACK` and is safe behind PgBouncer in transaction mode.
+
+**Rescheduling (RF10)** runs in one transaction: it locks the old appointment
+(`FOR UPDATE`), marks it `rescheduled` and inserts the new one. Because the old row
+stops counting first, moving an appointment 15 minutes later works even though the two
+intervals overlap. If the new time is taken, the whole transaction rolls back and the
+original booking stays as it was.
+
+## Conflicts and deadlocks
+
+- **Expected conflicts** become stable codes: `slot_taken`, `patient_overlap`,
+  `invalid_transition` (409) and `professional_unavailable` (422).
+- **Retries.** `withTenantTx` retries the whole transaction on `40001` (serialization
+  failure) and `40P01` (deadlock), up to 3 attempts with exponential backoff and jitter
+  (20 ms base, 250 ms maximum). PostgreSQL has already rolled the transaction back, so
+  running it again is safe. If every attempt fails: **409 `concurrency_conflict`**.
+- **Avoiding deadlocks.**
+  - Each transaction takes at most one agenda lock per professional, and rescheduling to
+    another professional takes both in a **fixed order** (sorted ids).
+  - Calls to other services (catalog, patients) happen **before** the transaction opens,
+    and Redis invalidations **after** the `COMMIT`. A retried transaction never repeats them,
+    and no lock is held while waiting on the network.
+
+## The cache cannot create a second winner
+
+Availability may be served from Redis, but a booking never reads the cache: it decides
+against PostgreSQL. Even if a stale copy showed a taken slot as free, the `INSERT` would
+fail with 409. The cache can only make an answer slow or stale, and I8 already prevents
+the stale case (see [cache.md](cache.md)).
+
+## Alternatives we discarded
+
+| Alternative | Why not |
+| --- | --- |
+| **Check-then-act** (`SELECT` free slots, then `INSERT`) | Both transactions see the slot as free and both insert. It is exactly the bug the question looks for. |
+| **`SELECT ... FOR UPDATE` on the professional** | `appointments_db` has no professional row (it lives in `users_db`). It would also serialize every booking of a professional, and it does not protect I2, which crosses professionals. |
+| **A lock in Redis** | Redis is not the source of truth. A lock with a TTL can expire while the transaction is still running, and a Redis failure would block or break bookings. The guarantee would live outside the database that stores the data. |
+| **SERIALIZABLE** | Correct, but answers with a generic `40001`, needs retries and aborts transactions that did not conflict. See above. |
+| **A mutex in the service** | Only works inside one process. With two replicas it protects nothing. |
+
+## How it is shown
+
+| Test | What it proves |
+| --- | --- |
+| [`tests/race/test.ts`](../services/appointments-service/tests/race/test.ts) | 2 receptionists, same slot, **100 iterations**: always exactly one 201 and one 409 `slot_taken`, and one row. Then **50** at once: one 201 and 49 409. Same patient with two professionals: 409 `patient_overlap` (I2). Finally, no professional has two overlapping `booked` appointments (I1). |
+| [`tests/race/block-vs-booking.test.ts`](../services/appointments-service/tests/race/block-vs-booking.test.ts) | A booking and a block for the same time, **60 iterations** (I3): either the block reports the booking as a conflict, or the booking gets 422. Removing the shared lock from the booking makes it fail within the first iterations. |
+| [`tests/integration/lifecycle.test.ts`](../services/appointments-service/tests/integration/lifecycle.test.ts) | Cancelling frees the time at once (I7); two receptionists rescheduling the same appointment get one 201 and one 409; a failed reschedule rolls back; the trigger rejects invalid transitions even without the service (RF13). |
+| [`packages/db/tests`](../packages/db/tests) | READ COMMITTED is set explicitly; retries of `40001`/`40P01`; nothing of a tenant's context survives a commit or a rollback. |
+
+Every test goes through HTTP to the real service and the real schema (constraints,
+triggers and RLS) on a throwaway database:
+
+```bash
+TEST_DATABASE_URL=postgres://<user>:<password>@localhost:5433/appointments_db \
+npm test -w services/appointments-service
+```
+
+## Known limits
+
+- **No `Idempotency-Key` yet.** If the response to a 201 is lost and the client retries,
+  the retry gets 409 (`slot_taken` or `patient_overlap`: it overlaps its own booking).
+  Nothing is booked twice, but the client cannot tell that the first attempt succeeded.
+- **One database decides.** The guarantee holds because both bookings reach the same
+  PostgreSQL. A future sharding by clinic keeps it, since a booking never crosses clinics;
+  writing one clinic's agenda from two regions would not.
