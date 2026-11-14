@@ -38,6 +38,29 @@ más son baratas.
 - Antes de volver a confiar en la caché, se reproduce la cola.
 - Si se acumulan más de 1000 invalidaciones, el pod se salta la caché durante un TTL completo, para que todo valor anterior haya expirado.
 
+**Si el proceso muere entre el `COMMIT` y la invalidación** (tarjeta E14), la cola de arriba
+muere con él. Para cubrir ese caso, cada transacción que cambia una agenda también inserta un
+evento `AgendaChanged` en la tabla `outbox`, en la misma transacción
+([`db/agenda-outbox.ts`](../services/appointments-service/db/agenda-outbox.ts)):
+
+| Escritura | Payload del evento |
+| --- | --- |
+| Reservar | `{ professionalId, dates: [día] }` |
+| Reprogramar | un evento para el día viejo y otro para el nuevo (pueden ser dos profesionales) |
+| Cancelar, registrar el desenlace | `{ professionalId, dates: [fecha UTC y sus vecinas] }` |
+| Horarios, bloqueos | `{ professionalId, dates: null }` (todos los días: sube `gen`) |
+
+Un relay en cada pod ([`cache/agenda-relay.ts`](../services/appointments-service/cache/agenda-relay.ts))
+toma los eventos pendientes cada segundo con `FOR UPDATE SKIP LOCKED`, los aplica en Redis y
+los marca publicados en la misma transacción. Si Redis falla, la transacción hace rollback y
+los eventos esperan a la siguiente pasada. Corre como `medicitas_relay` y solo toma
+`AgendaChanged`: los eventos `AuditRecorded` son del relay de auditoría.
+
+La invalidación directa sigue corriendo primero, porque es la que hace inmediato a I8. El relay
+vuelve a invalidar el mismo día un segundo después; eso cuesta un fallo de caché extra y nada
+más. El peor caso baja del TTL (10 minutos) a cerca de un segundo, y solo si un pod muere justo
+en ese instante. Los eventos solo se escriben cuando la caché está encendida.
+
 ## Cómo medirla
 
 ```bash

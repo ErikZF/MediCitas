@@ -10,7 +10,8 @@
 
 import { eq } from 'drizzle-orm';
 import { MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
-import { lockProfessionalAgenda } from '../../db/locks.ts';
+import { recordAgendaChange } from '../../db/agenda-outbox.ts';
+import { lockAgendas } from '../../db/locks.ts';
 import { appointment } from '../../db/schema.ts';
 import { ForbiddenError, NotFoundError } from '../../domain/errors.ts';
 import type { BookingInput } from './booking.schemas.ts';
@@ -80,8 +81,10 @@ export async function bookAppointment(deps: BookingDeps, ctx: TenantContext, inp
   await deps.patients.assertInClinic(ctx, input.patientId);
 
   const booked = await withTenantTx(deps.db, ctx, async (tx) => {
-    // Shared: bookings run in parallel, but never alongside a schedule change (I3).
-    await lockProfessionalAgenda(tx, input.professionalId, 'shared');
+    // Orders the writers of this professional's and this patient's agenda (db/locks.ts):
+    // a schedule change never runs alongside (I3), and the EXCLUDE never has to choose
+    // between two uncommitted rows.
+    await lockAgendas(tx, { professionals: [input.professionalId], patient: input.patientId });
     await assertSlotBookable(tx, slot);
 
     // I1 and I2 are decided here, by the EXCLUDE constraints, also under concurrency.
@@ -100,6 +103,8 @@ export async function bookAppointment(deps: BookingDeps, ctx: TenantContext, inp
       statusChangedBy: ctx.userId,
       updatedAt: now,
     }).returning();
+    // Backstop for the invalidation below, in case the process dies before it (E14).
+    if (deps.cache) await recordAgendaChange(tx, ctx, input.professionalId, [slot.date]);
 
     return toAppointmentDto(row!);
   }, asApp);

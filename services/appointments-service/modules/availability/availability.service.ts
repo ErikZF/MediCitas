@@ -14,6 +14,7 @@ import { and, eq, gt, inArray, lt } from 'drizzle-orm';
 import { MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext, type Transaction } from '@medicitas/db';
 import { appointment, professionalService, scheduleBlock, workingHours } from '../../db/schema.ts';
 import { daysInRange, freeWindows, slotsFromWindows, type Interval, type Slot } from '../../domain/availability.ts';
+import { MAX_APPOINTMENT_MS } from '../../domain/appointment-bounds.ts';
 import { ForbiddenError, ValidationError } from '../../domain/errors.ts';
 import { DAY_MS, localMidnightAsUtc, parseLocalDate, zonedToUtc } from '../../domain/zoned-time.ts';
 import type { ClinicCatalog } from '../booking/ports.ts';
@@ -110,6 +111,8 @@ async function loadFreeWindows(
     eq(appointment.status, 'booked'),
     lt(appointment.startsAt, range.end),
     gt(appointment.endsAt, range.start),
+    // Redundant with the line above, but lets the index stop early (domain/appointment-bounds.ts).
+    gt(appointment.startsAt, new Date(range.start.getTime() - MAX_APPOINTMENT_MS)),
   ));
 
   const result: FreeWindowsByDay = new Map();

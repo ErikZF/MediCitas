@@ -44,7 +44,9 @@ npm run dev -w services/edge-gateway
 | Bases de datos y RLS | [docs/database.es.md](docs/database.es.md) | [docs/database.md](docs/database.md) |
 | Comparación de multi-tenancy | [docs/database-comparison.es.md](docs/database-comparison.es.md) | [docs/database-comparison.md](docs/database-comparison.md) |
 | Identidad con Keycloak | [docs/keycloak.es.md](docs/keycloak.es.md) | [docs/keycloak.md](docs/keycloak.md) |
+| Concurrencia: el último espacio | [docs/concurrency.es.md](docs/concurrency.es.md) | [docs/concurrency.md](docs/concurrency.md) |
 | Caché de disponibilidad | [docs/cache.es.md](docs/cache.es.md) | [docs/cache.md](docs/cache.md) |
+| Índices y sus planes | [docs/indexes.es.md](docs/indexes.es.md) | [docs/indexes.md](docs/indexes.md) |
 | CI/CD | [docs/ci-cd.es.md](docs/ci-cd.es.md) | [docs/ci-cd.md](docs/ci-cd.md) |
 | Capa de datos `@medicitas/db` | [packages/db/README.es.md](packages/db/README.es.md) | [packages/db/README.md](packages/db/README.md) |
 

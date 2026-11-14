@@ -98,8 +98,8 @@ CREATE TABLE working_hours (
     )
 );
 
-CREATE INDEX idx_working_hours_clinic_id ON working_hours (clinic_id);
-CREATE INDEX idx_working_hours_professional_id ON working_hours (professional_id);
+-- No extra index: RF7 reads the week of a professional through the index of
+-- no_overlap_working_hours (clinic_id, professional_id, ...). See docs/indexes.md.
 
 -- ---------------------------------------------------------------------
 -- schedule_block: vacation / leave of a professional (RF6)
@@ -117,8 +117,8 @@ CREATE TABLE schedule_block (
     CHECK (starts_at < ends_at)
 );
 
-CREATE INDEX idx_schedule_block_clinic_id ON schedule_block (clinic_id);
-CREATE INDEX idx_schedule_block_professional_id ON schedule_block (professional_id);
+-- RF7/RF8: blocks of some professionals that overlap a range (docs/indexes.md).
+CREATE INDEX idx_schedule_block_professional_starts_at ON schedule_block (clinic_id, professional_id, starts_at);
 
 -- ---------------------------------------------------------------------
 -- professional_service: services that a professional provides
@@ -132,8 +132,8 @@ CREATE TABLE professional_service (
     PRIMARY KEY (clinic_id, professional_id, service_id)
 );
 
-CREATE INDEX idx_prof_service_professional_id ON professional_service (professional_id);
-CREATE INDEX idx_prof_service_clinic_id ON professional_service (clinic_id);
+-- No extra index: the primary key (clinic_id, professional_id, service_id) serves
+-- both "does this professional offer it" and RF8's "who offers it" (docs/indexes.md).
 
 -- ---------------------------------------------------------------------
 -- appointment: RF9 to RF13
@@ -153,6 +153,9 @@ CREATE TABLE appointment (
     starts_at           TIMESTAMPTZ NOT NULL,
     ends_at             TIMESTAMPTZ NOT NULL,
     duration_minutes    INT         NOT NULL CHECK (duration_minutes > 0), -- snapshot of the service duration at booking (I4)
+    -- An appointment fits in one working-hours block, and those never cross midnight (I3),
+    -- so none lasts more than a day. Queries rely on it to bound starts_at from below.
+    CONSTRAINT appointment_within_one_day CHECK (duration_minutes <= 1440),
     status              VARCHAR(16) NOT NULL DEFAULT 'booked'
                         CHECK (status IN ('booked', 'attended', 'no_show', 'cancelled', 'rescheduled')),
     cancel_reason       VARCHAR(256),                          -- RF11
@@ -185,10 +188,15 @@ CREATE TABLE appointment (
     ) WHERE (status = 'booked')
 );
 
-CREATE INDEX idx_appointment_clinic_id ON appointment (clinic_id);
-CREATE INDEX idx_appointment_professional_id ON appointment (professional_id);
-CREATE INDEX idx_appointment_patient_id ON appointment (patient_id);
-CREATE INDEX idx_appointment_status ON appointment (status);
+-- Each index serves a query whose plan is in docs/indexes.md. Range operators (&&) are
+-- not leakproof, so under RLS they never become index conditions: these are btrees on
+-- plain columns, and the queries bound starts_at on both sides (appointment_within_one_day).
+-- RF7, RF8 and RF20 for one professional.
+CREATE INDEX idx_appointment_professional_starts_at ON appointment (clinic_id, professional_id, starts_at);
+-- RF20 for the whole clinic and RF21 (index-only scan thanks to INCLUDE).
+CREATE INDEX idx_appointment_clinic_starts_at ON appointment (clinic_id, starts_at) INCLUDE (status);
+-- RF16, already in the order the history is shown.
+CREATE INDEX idx_appointment_patient_starts_at ON appointment (clinic_id, patient_id, starts_at);
 CREATE INDEX idx_appointment_clinic_updated_at ON appointment (clinic_id, updated_at);
 CREATE INDEX idx_appointment_clinic_status_changed_at ON appointment (clinic_id, status_changed_at);
 
@@ -245,9 +253,7 @@ CREATE TABLE clinical_note (
         REFERENCES appointment (clinic_id, appointment_id)
 );
 
-CREATE INDEX idx_clinical_note_appointment_id ON clinical_note (appointment_id);
-CREATE INDEX idx_clinical_note_clinic_id ON clinical_note (clinic_id);
-CREATE INDEX idx_clinical_note_professional_id ON clinical_note (professional_id);
+-- No extra index: RF15 finds the note through UNIQUE (clinic_id, appointment_id).
 
 CREATE TRIGGER trg_clinical_note_updated_at
 BEFORE UPDATE ON clinical_note

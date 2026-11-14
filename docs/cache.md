@@ -37,6 +37,29 @@ and its two neighbours (`possibleLocalDates`). The extra invalidations are cheap
 - Before the cache is trusted again, the queue is replayed.
 - If more than 1000 invalidations pile up, the pod skips the cache for one TTL so that every older value has expired.
 
+**If the process dies between the `COMMIT` and the invalidation** (card E14), the queue above
+dies with it. To cover that case, every transaction that changes an agenda also inserts an
+`AgendaChanged` event in the `outbox` table, in the same transaction
+([`db/agenda-outbox.ts`](../services/appointments-service/db/agenda-outbox.ts)):
+
+| Write | Event payload |
+| --- | --- |
+| Booking | `{ professionalId, dates: [day] }` |
+| Rescheduling | one event for the old day and one for the new day (they may be two professionals) |
+| Cancelling, recording an outcome | `{ professionalId, dates: [UTC date and its neighbours] }` |
+| Working hours, blocks | `{ professionalId, dates: null }` (every day: bumps `gen`) |
+
+A relay in every pod ([`cache/agenda-relay.ts`](../services/appointments-service/cache/agenda-relay.ts))
+claims pending events every second with `FOR UPDATE SKIP LOCKED`, applies them to Redis and
+marks them published in the same transaction. If Redis fails, the transaction rolls back and
+the events wait for the next pass. It runs as `medicitas_relay` and only takes
+`AgendaChanged`: `AuditRecorded` events belong to the audit relay.
+
+The direct invalidation still runs first, because it is what makes I8 immediate. The relay
+invalidates the same day again a second later; that costs one extra cache miss and nothing
+else. The worst case drops from the TTL (10 minutes) to about one second, and only when a pod
+dies at that exact moment. The events are only written when the cache is on.
+
 ## Measuring it
 
 ```bash

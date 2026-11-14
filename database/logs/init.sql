@@ -90,10 +90,11 @@ CREATE TABLE audit_log (
     PRIMARY KEY (clinic_id, audit_log_id)
 );
 
-CREATE INDEX idx_audit_log_clinic_id ON audit_log (clinic_id);
-CREATE INDEX idx_audit_log_app_user_id ON audit_log (app_user_id);
-CREATE INDEX idx_audit_log_patient_id ON audit_log (patient_id);
-CREATE INDEX idx_audit_log_occurred_at ON audit_log (occurred_at);
+-- RF19 filters by user, by patient and by date range, always within one clinic and
+-- ordered by occurred_at. One index per filter, plans in docs/indexes.md.
+CREATE INDEX idx_audit_log_clinic_occurred_at ON audit_log (clinic_id, occurred_at);
+CREATE INDEX idx_audit_log_clinic_patient ON audit_log (clinic_id, patient_id, occurred_at);
+CREATE INDEX idx_audit_log_clinic_user ON audit_log (clinic_id, app_user_id, occurred_at);
 
 CREATE FUNCTION reject_audit_log_change() RETURNS trigger AS $$
 BEGIN

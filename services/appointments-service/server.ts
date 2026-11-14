@@ -3,6 +3,7 @@ import { logger, startServer } from '@medicitas/http';
 import { createApp } from './app.ts';
 import { createHttpClinicCalendar } from './adapters/clinic-calendar.http.ts';
 import { createHttpClinicCatalog, createHttpPatientDirectory, createHttpProfessionalDirectory } from './adapters/directory.http.ts';
+import { startAgendaRelay } from './cache/agenda-relay.ts';
 import { agendaCacheFromEnv } from './cache/redis.ts';
 
 // Composition root: every module of appointments-service, wired to its real
@@ -14,7 +15,12 @@ try {
   const directory = createHttpProfessionalDirectory(process.env.USERS_SERVICE_URL);
   const patients = createHttpPatientDirectory(process.env.USERS_SERVICE_URL);
   const cache = agendaCacheFromEnv();
-  if (cache === undefined) logger.info('Availability cache disabled: every read goes to PostgreSQL.');
+  if (cache === undefined) {
+    logger.info('Availability cache disabled: every read goes to PostgreSQL.');
+  } else {
+    // Re-applies AgendaChanged events from the outbox, in case an invalidation was lost (E14).
+    startAgendaRelay(db, cache);
+  }
 
   startServer(createApp({
     associations: { db, catalog, directory },
