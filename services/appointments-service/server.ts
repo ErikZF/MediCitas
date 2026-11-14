@@ -23,6 +23,7 @@ try {
   }
 
   startServer(createApp({
+    associations: { db, catalog, directory },
     schedule: { db, directory, cache },
     availability: { db, catalog, directory, cache },
     booking: { db, catalog, patients, cache },

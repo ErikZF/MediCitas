@@ -57,7 +57,7 @@ export async function createService(deps: ServiceCatalogDeps, ctx: TenantContext
 }
 
 export async function getService(deps: ServiceCatalogDeps, ctx: TenantContext, id: unknown): Promise<ServiceDto> {
-  authorize(ctx, 'service:read');
+  authorize(ctx, 'schedule:read');
   const serviceId = parseServiceId(id);
   return withTenantTx(deps.db, ctx, (tx) => findService(tx, serviceId), readAsApp);
 }

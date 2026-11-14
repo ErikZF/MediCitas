@@ -1,6 +1,7 @@
 {
   "users": [
     {
+      "id": "019a0000-0000-7000-8000-000000001001",
       "username": "platform.admin",
       "email": "platform.admin@medicitas.local",
       "emailVerified": true,
@@ -30,6 +31,7 @@
       ]
     },
     {
+      "id": "019a0000-0000-7000-8000-000000001002",
       "username": "admin.sj",
       "email": "admin.sj@medicitas.local",
       "emailVerified": true,
@@ -62,6 +64,7 @@
       ]
     },
     {
+      "id": "019a0000-0000-7000-8000-000000001003",
       "username": "reception.sj",
       "email": "reception.sj@medicitas.local",
       "emailVerified": true,
@@ -94,6 +97,7 @@
       ]
     },
     {
+      "id": "019a0000-0000-7000-8000-000000001004",
       "username": "dr.mora",
       "email": "laura.mora@medicitas.local",
       "emailVerified": true,
@@ -129,6 +133,7 @@
       ]
     },
     {
+      "id": "019a0000-0000-7000-8000-000000001005",
       "username": "dr.solis",
       "email": "carlos.solis@medicitas.local",
       "emailVerified": true,
@@ -164,6 +169,7 @@
       ]
     },
     {
+      "id": "019a0000-0000-7000-8000-000000001006",
       "username": "admin.curri",
       "email": "admin.curri@medicitas.local",
       "emailVerified": true,
@@ -196,6 +202,7 @@
       ]
     },
     {
+      "id": "019a0000-0000-7000-8000-000000001007",
       "username": "dr.vega",
       "email": "elena.vega@medicitas.local",
       "emailVerified": true,

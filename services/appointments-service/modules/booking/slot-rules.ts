@@ -16,6 +16,7 @@ const MINUTE_MS = 60_000;
 
 export interface Slot {
   professionalId: string;
+  specialtyId: string;
   serviceId: string;
   startsAt: Date;
   endsAt: Date;
@@ -43,6 +44,7 @@ export function slotFor(professionalId: string, service: BookableService, starts
   const date = localDateOf(startsAt.getTime(), service.timeZone);
   return {
     professionalId,
+    specialtyId: service.specialtyId,
     serviceId: service.serviceId,
     startsAt,
     endsAt: new Date(startsAt.getTime() + service.durationMinutes * MINUTE_MS),
@@ -55,7 +57,8 @@ export function slotFor(professionalId: string, service: BookableService, starts
 /** Service offered, no block (I3), and fully inside one block of working hours (I3). */
 export async function assertSlotBookable(tx: Transaction, slot: Slot): Promise<void> {
   const offered = await tx.select({ found: sql<number>`1` }).from(professionalService)
-    .where(and(eq(professionalService.professionalId, slot.professionalId), eq(professionalService.serviceId, slot.serviceId)))
+    .where(and(eq(professionalService.professionalId, slot.professionalId), eq(professionalService.serviceId, slot.serviceId),
+      eq(professionalService.specialtyId, slot.specialtyId)))
     .limit(1);
   if (offered.length === 0) {
     throw new ValidationError('The professional does not offer this service.', 'service_not_offered');

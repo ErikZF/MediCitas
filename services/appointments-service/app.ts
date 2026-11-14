@@ -14,6 +14,7 @@ import { createDailyAgendaRouter } from './modules/daily-agenda/daily-agenda.rou
 import type { DailyAgendaDeps } from './modules/daily-agenda/daily-agenda.service.ts';
 import { createPatientHistoryRouter, type PatientHistoryDeps } from './modules/patient-history/patient-history.routes.ts';
 import routes from './modules/routes.ts';
+import { createServiceAssociationRouter, type AssociationDeps } from './modules/service-associations/routes.ts';
 import { createScheduleRouter } from './modules/schedule/schedule.routes.ts';
 import type { ScheduleDeps } from './modules/schedule/schedule.service.ts';
 
@@ -21,6 +22,7 @@ export interface AppDeps {
   /** Builds the tenant context from the request (defaults to @medicitas/auth token claims in production). */
   resolveContext?: ContextResolver;
   schedule?: ScheduleDeps;
+  associations?: AssociationDeps;
   booking?: BookingDeps;
   appointmentCounts?: AppointmentCountsDeps;
   dailyAgenda?: DailyAgendaDeps;
@@ -46,8 +48,10 @@ export function createApp(deps?: AppDeps): Express {
     const authenticated = deps.resolveContext === undefined
       ? [requireToken, requireTenantContext(extractTenantContext), captureAuthorization]
       : [requireTenantContext(deps.resolveContext), captureAuthorization];
-    if (deps.schedule !== undefined) {
-      app.use('/professionals', ...authenticated, createScheduleRouter(deps.schedule));
+    if (deps.associations || deps.schedule) {
+      app.use('/professionals', ...authenticated);
+      if (deps.associations) app.use('/professionals', createServiceAssociationRouter(deps.associations));
+      if (deps.schedule) app.use('/professionals', createScheduleRouter(deps.schedule));
     }
     if (deps.appointmentCounts !== undefined) {
       app.use('/appointments/counts', ...authenticated, createAppointmentCountsRouter(deps.appointmentCounts));
