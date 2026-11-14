@@ -48,10 +48,12 @@ describe.skipIf(!url)('appointment life cycle (RF10-RF13)', () => {
   describe('before the appointments start', () => {
     test('RF11: cancel keeps the reason and who cancelled, and frees the time', async () => {
       const id = await book(PROF_1, 1, '08:00');
+      clock = new Date('2026-01-01T00:05:00Z');
       const result = await action(id, 'cancel', { reason: 'Patient travelling' });
       assert.equal(result.status, 200);
       assert.equal(result.body.status, 'cancelled');
       assert.equal(result.body.cancelReason, 'Patient travelling');
+      assert.equal(result.body.createdAt, '2026-01-01T00:00:00.000Z');
       assert.equal(result.body.statusChangedAt, clock.toISOString());
       assert.equal(result.body.statusChangedBy, USER);
       assert.equal(result.body.updatedAt, clock.toISOString());
@@ -144,7 +146,7 @@ describe.skipIf(!url)('appointment life cycle (RF10-RF13)', () => {
       const result = await action(ids.late!, 'outcome', { outcome: 'attended' });
       assert.equal(result.status, 200);
       assert.equal(result.body.status, 'attended');
-      assert.equal(result.body.createdAt, '2026-01-01T00:00:00.000Z');
+      assert.equal(result.body.createdAt, '2026-01-01T00:05:00.000Z');
       assert.equal(result.body.statusChangedAt, clock.toISOString());
       assert.equal(result.body.statusChangedBy, USER);
       assert.equal(result.body.updatedAt, clock.toISOString());
