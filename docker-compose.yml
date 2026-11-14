@@ -1,3 +1,10 @@
+x-service-healthcheck: &service-healthcheck
+  test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + process.env.API_INTERNAL_PORT + '/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+  interval: 15s
+  timeout: 5s
+  retries: 5
+  start_period: 15s
+
 services:
   db_clinics:
     image: postgres:17-alpine
@@ -111,6 +118,7 @@ services:
       start_period: 30s
     networks:
       - public_net
+      - private_net
 
   redis:
     image: redis:alpine3.23
@@ -118,10 +126,178 @@ services:
     ports:
       - "${REDIS_PORT}:${REDIS_PORT}"
     environment:
-      - REDIS_ARGS=--requirepass ${REDIS_PASSWORD} --appendonly yes
+      REDIS_PORT: ${REDIS_PORT}
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+      REDIS_ARGS: "--requirepass ${REDIS_PASSWORD} --appendonly yes"
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p $${REDIS_PORT} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     networks:
+      - private_net
+    restart: unless-stopped
+
+  clinics-service:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE: clinics-service
+    container_name: clinics_service_MediCitas
+    environment:
+      API_INTERNAL_PORT: ${API_INTERNAL_PORT}
+      DB_CONNECT_PORT: ${DB_CONNECT_PORT}
+      DB_CLINICS_HOST: ${DB_CLINICS_HOST}
+      DB_CLINICS_NAME: ${DB_CLINICS_NAME}
+      DB_CLINICS_USER: ${DB_CLINICS_USER}
+      DB_CLINICS_PASSWORD: ${DB_CLINICS_PASSWORD}
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE}
+      REALM_NAME: ${REALM_NAME}
+    depends_on:
+      db_clinics:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck: *service-healthcheck
+    networks:
+      - private_net
+    restart: unless-stopped
+
+  users-service:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE: users-service
+    container_name: users_service_MediCitas
+    environment:
+      API_INTERNAL_PORT: ${API_INTERNAL_PORT}
+      DB_CONNECT_PORT: ${DB_CONNECT_PORT}
+      DB_USERS_HOST: ${DB_USERS_HOST}
+      DB_USERS_NAME: ${DB_USERS_NAME}
+      DB_USERS_USER: ${DB_USERS_USER}
+      DB_USERS_PASSWORD: ${DB_USERS_PASSWORD}
+      CLINICS_SERVICE_URL: ${CLINICS_SERVICE_URL}
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE}
+      REALM_NAME: ${REALM_NAME}
+    depends_on:
+      db_users:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      clinics-service:
+        condition: service_healthy
+    healthcheck: *service-healthcheck
+    networks:
+      - private_net
+    restart: unless-stopped
+
+  appointments-service:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE: appointments-service
+    container_name: appointments_service_MediCitas
+    environment:
+      API_INTERNAL_PORT: ${API_INTERNAL_PORT}
+      DB_CONNECT_PORT: ${DB_CONNECT_PORT}
+      DB_APPOINTMENTS_HOST: ${DB_APPOINTMENTS_HOST}
+      DB_APPOINTMENTS_NAME: ${DB_APPOINTMENTS_NAME}
+      DB_APPOINTMENTS_USER: ${DB_APPOINTMENTS_USER}
+      DB_APPOINTMENTS_PASSWORD: ${DB_APPOINTMENTS_PASSWORD}
+      CLINICS_SERVICE_URL: ${CLINICS_SERVICE_URL}
+      USERS_SERVICE_URL: ${USERS_SERVICE_URL}
+      REDIS_URL: ${REDIS_URL}
+      CACHE_ENABLED: ${CACHE_ENABLED}
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS}
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE}
+      REALM_NAME: ${REALM_NAME}
+    depends_on:
+      db_appointments:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      clinics-service:
+        condition: service_healthy
+      users-service:
+        condition: service_healthy
+    healthcheck: *service-healthcheck
+    networks:
+      - private_net
+    restart: unless-stopped
+
+  audit-service:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE: audit-service
+    container_name: audit_service_MediCitas
+    environment:
+      API_INTERNAL_PORT: ${API_INTERNAL_PORT}
+      DB_CONNECT_PORT: ${DB_CONNECT_PORT}
+      DB_LOGS_HOST: ${DB_LOGS_HOST}
+      DB_LOGS_NAME: ${DB_LOGS_NAME}
+      DB_LOGS_USER: ${DB_LOGS_USER}
+      DB_LOGS_PASSWORD: ${DB_LOGS_PASSWORD}
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE}
+      REALM_NAME: ${REALM_NAME}
+    depends_on:
+      db_logs:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck: *service-healthcheck
+    networks:
+      - private_net
+    restart: unless-stopped
+
+  edge-gateway:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE: edge-gateway
+    container_name: edge_gateway_MediCitas
+    environment:
+      API_INTERNAL_PORT: ${API_INTERNAL_PORT}
+      CLINICS_SERVICE_URL: ${CLINICS_SERVICE_URL}
+      USERS_SERVICE_URL: ${USERS_SERVICE_URL}
+      APPOINTMENTS_SERVICE_URL: ${APPOINTMENTS_SERVICE_URL}
+      AUDIT_SERVICE_URL: ${AUDIT_SERVICE_URL}
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE}
+      REALM_NAME: ${REALM_NAME}
+    ports:
+      - "${API_PORT}:${API_INTERNAL_PORT}"
+    depends_on:
+      clinics-service:
+        condition: service_healthy
+      users-service:
+        condition: service_healthy
+      appointments-service:
+        condition: service_healthy
+      audit-service:
+        condition: service_healthy
+    healthcheck: *service-healthcheck
+    networks:
+      - public_net
       - private_net
     restart: unless-stopped
 
