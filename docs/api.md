@@ -258,7 +258,8 @@ Appointment = {
   appointmentId: UUID, professionalId: UUID, patientId: UUID, serviceId: UUID,
   startsAt: ISO, endsAt: ISO, durationMinutes: number,
   status: "booked"|"attended"|"no_show"|"cancelled"|"rescheduled",
-  cancelReason: string|null, rescheduledFromId: UUID|null
+  cancelReason: string|null, rescheduledFromId: UUID|null,
+  createdAt: ISO, statusChangedAt: ISO, statusChangedBy: UUID|null, updatedAt: ISO
 }
 ```
 
@@ -433,12 +434,12 @@ events does not demonstrate RF18 production.
 
 These responses supplement each operation's specific codes. The first middleware,
 validation or domain failure determines the response. Runtime strings are kept
-verbatim below, including the two Spanish messages currently emitted by authentication.
+verbatim below.
 
 | HTTP | Response / cause |
 | --- | --- |
 | 400 | `{"error":"Bad request."}` for malformed JSON |
-| 401 | Missing context: `{"error":"Authentication required."}`. With `requiereToken`: `{"error":"falta el token de acceso"}` or `{"error":"token inválido o expirado"}` |
+| 401 | Missing context: `{"error":"Authentication required."}`. With `requireToken`: `{"error":"Missing access token."}` or `{"error":"Invalid or expired token."}` |
 | 403 | Domain/permissions/RLS: `{"error":"Request rejected.","code":"forbidden"}` |
 | 404 | Resource: `{"error":"Request rejected.","code":"not_found"}`. Missing or unmounted route: `{"error":"Route not found."}` |
 | 409 | Route conflicts; the database adapter also maps `duplicate`, `overlap` and `concurrency_conflict` (transaction retries exhausted), with `error: "Request rejected."` |

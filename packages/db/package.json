@@ -2,7 +2,7 @@
   "name": "@medicitas/db",
   "version": "0.1.0",
   "private": true,
-  "description": "Capa de datos compartida de MediCitas: pools, transacciones con contexto de tenant y traducción de errores de PostgreSQL.",
+  "description": "Shared data layer for MediCitas: connection pools, tenant-scoped transactions, and PostgreSQL error mapping.",
   "license": "MIT",
   "author": "Erik, Johana, Neithan",
   "type": "module",

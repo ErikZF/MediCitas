@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http';
 import type { Request, Response } from 'express';
 import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, test, vi } from 'vitest';
-import { extractTenantContext, requiereTenantContext, requiereToken } from '../src/auth.ts';
+import { extractTenantContext, requireTenantContext, requireToken } from '../src/auth.ts';
 
 describe('multi-tenant context extraction from Keycloak tokens', () => {
   let keys: Awaited<ReturnType<typeof generateKeyPair>>;
@@ -84,7 +84,7 @@ describe('multi-tenant context extraction from Keycloak tokens', () => {
     }, ['receptionist']);
 
     const { req, res, next, asResponse } = mockHttp(token);
-    await requiereToken(req, asResponse, next);
+    await requireToken(req, asResponse, next);
     assert.equal(next.mock.calls.length, 1);
 
     const ctx = extractTenantContext(req);
@@ -101,7 +101,7 @@ describe('multi-tenant context extraction from Keycloak tokens', () => {
     }, ['platform_admin']);
 
     const { req, res, next, asResponse } = mockHttp(token);
-    await requiereToken(req, asResponse, next);
+    await requireToken(req, asResponse, next);
     assert.equal(next.mock.calls.length, 1);
 
     const ctx = extractTenantContext(req);
@@ -120,7 +120,7 @@ describe('multi-tenant context extraction from Keycloak tokens', () => {
     }, ['professional']);
 
     const { req, res, next, asResponse } = mockHttp(token);
-    await requiereToken(req, asResponse, next);
+    await requireToken(req, asResponse, next);
     assert.equal(next.mock.calls.length, 1);
 
     const ctx = extractTenantContext(req);
@@ -140,7 +140,7 @@ describe('multi-tenant context extraction from Keycloak tokens', () => {
     }, ['user']);
 
     const { req, res, next, asResponse } = mockHttp(token);
-    await requiereToken(req, asResponse, next);
+    await requireToken(req, asResponse, next);
     assert.equal(next.mock.calls.length, 1);
 
     const ctx = extractTenantContext(req);
@@ -158,7 +158,7 @@ describe('multi-tenant context extraction from Keycloak tokens', () => {
     }, ['professional']);
 
     const { req, res, next, asResponse } = mockHttp(token);
-    await requiereTenantContext(req, asResponse, next);
+    await requireTenantContext(req, asResponse, next);
 
     assert.equal(next.mock.calls.length, 0);
     assert.equal(res.status.mock.calls[0][0], 401);
@@ -171,7 +171,7 @@ describe('multi-tenant context extraction from Keycloak tokens', () => {
     }, ['clinic_admin']);
 
     const { req, res, next, asResponse } = mockHttp(token);
-    await requiereTenantContext(req, asResponse, next);
+    await requireTenantContext(req, asResponse, next);
 
     assert.equal(next.mock.calls.length, 0);
     assert.equal(res.status.mock.calls[0][0], 401);
@@ -184,20 +184,20 @@ describe('multi-tenant context extraction from Keycloak tokens', () => {
     }, ['receptionist']);
 
     const { req, res, next, asResponse } = mockHttp(token);
-    await requiereTenantContext(req, asResponse, next);
+    await requireTenantContext(req, asResponse, next);
 
     assert.equal(next.mock.calls.length, 0);
     assert.equal(res.status.mock.calls[0][0], 401);
   });
 
-  test('requiereTenantContext middleware populates res.locals.tenant on success', async () => {
+  test('requireTenantContext middleware populates res.locals.tenant on success', async () => {
     const token = await signedToken({
       clinic_id: CLINIC_ID,
       app_user_id: USER_ID,
     }, ['receptionist']);
 
     const { req, res, next, asResponse } = mockHttp(token);
-    await requiereTenantContext(req, asResponse, next);
+    await requireTenantContext(req, asResponse, next);
 
     assert.equal(next.mock.calls.length, 1);
     assert.deepEqual(res.locals.tenant, {

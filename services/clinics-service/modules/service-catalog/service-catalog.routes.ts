@@ -3,7 +3,7 @@ import { extractTenantContext } from '@medicitas/auth';
 import { CatalogError } from './service-catalog.errors.ts';
 import { createService, deleteService, getService, listServices, updateService, type ServiceCatalogDeps } from './service-catalog.service.ts';
 
-/** Mounted at /services after requiereToken and requiereTenantContext. */
+/** Mounted at /services after requireToken and requireTenantContext. */
 export function createServiceCatalogRouter(deps: ServiceCatalogDeps): Router {
   const router = Router();
 

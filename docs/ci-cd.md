@@ -21,7 +21,7 @@ flowchart TD
         UnitTest["Job: Unit Tests\n(npm test)"]
         
         subgraph PostgresService["PostgreSQL service container"]
-            PG["postgres:17-alpine\n(healthcheck enabled)"]
+            PG["postgres:18-alpine\n(healthcheck enabled)"]
         end
         
         IntegTest["Job: DB Integration & Concurrency\n(TEST_DATABASE_URL)\n- RLS policy checks\n- Appointment lifecycle and availability\n- Concurrency and critical races (I1, I2, I5)"]
@@ -60,7 +60,7 @@ flowchart TD
    - Runs the fast unit tests of every package and microservice (`npm test`).
 
 3. **`integration-tests` (database and concurrency tests)**:
-   - Starts a **PostgreSQL 17** service container (`postgres:17-alpine`).
+   - Starts a **PostgreSQL 18** service container (`postgres:18-alpine`).
    - Injects `TEST_DATABASE_URL: postgres://test:test_password@localhost:5432/postgres`.
    - Also starts **Redis 7** (`redis:7-alpine`) and injects `TEST_REDIS_URL: redis://localhost:6379` for the availability cache tests (E8, I8). Without that variable those tests are skipped.
    - The tests create a throwaway database on the fly (`medicitas_<label>_<pid>`) and apply the real schema [`database/appointments/init.sql`](../database/appointments/init.sql), with its extensions (`btree_gist`), exclusion constraints and RLS policies.

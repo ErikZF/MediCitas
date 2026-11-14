@@ -52,7 +52,7 @@ async function seed(app: BookingApp): Promise<void> {
       }
       if (d % 5 === 2) {
         await app.pool.query(
-          `INSERT INTO schedule_block (clinic_id, professional_id, starts_at, ends_at, reason) VALUES ($1, $2, $3, $4, 'Reunión')`,
+          `INSERT INTO schedule_block (clinic_id, professional_id, starts_at, ends_at, reason) VALUES ($1, $2, $3, $4, 'Meeting')`,
           [CLINIC_A, professionalId, `${day}T11:00:00Z`, `${day}T12:00:00Z`],
         );
       }

@@ -195,7 +195,7 @@ describe('withTenantTx: errors and retries', () => {
       throw drizzleWrapped('23505', 'patient_clinic_id_identification_key');
     }, {
       constraintErrors: {
-        patient_clinic_id_identification_key: { status: 409, code: 'patient_exists', message: 'El paciente ya está registrado.' },
+        patient_clinic_id_identification_key: { status: 409, code: 'patient_exists', message: 'The patient is already registered.' },
       },
     }).catch((e: unknown) => e);
     assert.ok(error instanceof DbError);
@@ -206,7 +206,7 @@ describe('withTenantTx: errors and retries', () => {
     const { db } = fakeDb();
     class OutsideWorkingHours extends Error {}
     await assert.rejects(
-      withTenantTx(db, receptionist, async () => { throw new OutsideWorkingHours('fuera de horario'); }),
+      withTenantTx(db, receptionist, async () => { throw new OutsideWorkingHours('outside working hours'); }),
       OutsideWorkingHours,
     );
   });

@@ -1,6 +1,6 @@
 -- =====================================================================
 -- MediCitas - Clinics Database - Microservice: Clinics
--- Engine: PostgreSQL 17
+-- Engine: PostgreSQL 18
 -- =====================================================================
 
 -- --------------------------------------------------------------------
@@ -66,7 +66,7 @@ $$ LANGUAGE plpgsql;
 -- clinic
 -- --------------------------------------------------------------------
 CREATE TABLE clinic (
-    clinic_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    clinic_id  UUID PRIMARY KEY DEFAULT uuidv7(),
     identifier VARCHAR(32)  NOT NULL UNIQUE,
     name       VARCHAR(128) NOT NULL,
     time_zone  TEXT         NOT NULL,
@@ -77,7 +77,7 @@ CREATE TABLE clinic (
 -- specialty: global catalog shared by every clinic
 -- --------------------------------------------------------------------
 CREATE TABLE specialty (
-    specialty_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    specialty_id UUID PRIMARY KEY DEFAULT uuidv7(),
     name         VARCHAR(128) NOT NULL UNIQUE
 );
 
@@ -85,12 +85,13 @@ CREATE TABLE specialty (
 -- service: clinic catalog
 -- --------------------------------------------------------------------
 CREATE TABLE service (
-    service_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service_id       UUID NOT NULL DEFAULT uuidv7(),
     clinic_id        UUID NOT NULL REFERENCES clinic (clinic_id),
     specialty_id     UUID NOT NULL REFERENCES specialty (specialty_id),
     name             VARCHAR(128) NOT NULL,
     duration_minutes INT  NOT NULL CHECK (duration_minutes > 0),
     is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+    PRIMARY KEY (clinic_id, service_id),
     UNIQUE (clinic_id, name)
 );
 

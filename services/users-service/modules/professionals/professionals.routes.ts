@@ -3,7 +3,7 @@ import { extractTenantContext } from '@medicitas/auth';
 import { ProfessionalError } from './professionals.errors.ts';
 import { registerProfessional, type ProfessionalDeps } from './professionals.service.ts';
 
-/** Mounted after requiereToken and requiereTenantContext, with no auth override. */
+/** Mounted after requireToken and requireTenantContext, with no auth override. */
 export function createProfessionalsRouter(deps: ProfessionalDeps): Router {
   const router = Router();
   router.post('/', async (req, res) => {

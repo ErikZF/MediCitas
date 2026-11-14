@@ -89,7 +89,7 @@ describe.skipIf(!url || !redisUrl)('availability cache (E8, I8)', () => {
     const day = MONDAYS[2]!;
     const booked = await book(PROF_1, 3, at(day, '10:00'));
     assert.ok(!(await slots(PROF_1, day)).includes(at(day, '10:00')));    // now cached without 10:00
-    const cancelled = await app.call('POST', `/appointments/${booked.body.appointmentId}/cancel`, receptionA, { reason: 'Paciente avisó' });
+    const cancelled = await app.call('POST', `/appointments/${booked.body.appointmentId}/cancel`, receptionA, { reason: 'Patient notified' });
     assert.equal(cancelled.status, 200);
     assert.ok((await slots(PROF_1, day)).includes(at(day, '10:00')));
   });

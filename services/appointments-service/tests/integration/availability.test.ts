@@ -35,7 +35,7 @@ describe.skipIf(!url)('availability (RF7, RF8)', () => {
     // A cancelled appointment gives its time back.
     await seedAppointment(PROF_1, patient(2), '10:00', 'cancelled');
     await app.pool.query(
-      `INSERT INTO schedule_block (clinic_id, professional_id, starts_at, ends_at, reason) VALUES ($1, $2, $3, $4, 'Reunión')`,
+      `INSERT INTO schedule_block (clinic_id, professional_id, starts_at, ends_at, reason) VALUES ($1, $2, $3, $4, 'Meeting')`,
       [CLINIC_A, PROF_2, at('10:00'), at('11:00')],
     );
   });

@@ -87,7 +87,7 @@ export async function createClinicalNote(
       throw new ValidationError('Only an attended appointment can have a clinical note.', 'appointment_not_attended');
     }
 
-    // Two concurrent POSTs: the UNIQUE appointment_id lets one insert; the other gets nothing back.
+    // Two concurrent POSTs: the UNIQUE (clinic_id, appointment_id) lets one insert; the other gets nothing back.
     const [row] = await tx.insert(clinicalNote).values({
       appointmentId,
       clinicId: ctx.clinicId as string,
@@ -95,7 +95,7 @@ export async function createClinicalNote(
       content: input.content,
       createdAt: now,
       updatedAt: now,
-    }).onConflictDoNothing({ target: clinicalNote.appointmentId }).returning();
+    }).onConflictDoNothing({ target: [clinicalNote.clinicId, clinicalNote.appointmentId] }).returning();
     if (row === undefined) {
       throw new ConflictError('The appointment already has a clinical note.', 'note_exists');
     }

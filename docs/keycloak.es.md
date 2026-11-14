@@ -28,14 +28,14 @@ flowchart TD
     end
 
     subgraph Services["Microservicios de dominio"]
-        AuthMiddleware["@medicitas/auth (requiereTenantContext / requiereToken)"]
+        AuthMiddleware["@medicitas/auth (requireTenantContext / requireToken)"]
         ApptSvc["appointments-service"]
         ClinicsSvc["clinics-service"]
         UsersSvc["users-service"]
         AuditSvc["audit-service"]
     end
 
-    subgraph Data["PostgreSQL 17 (Row-Level Security)"]
+    subgraph Data["PostgreSQL 18 (Row-Level Security)"]
         TenantTx["withTenantTx(db, ctx, tx)"]
         RLS["app_set_session_context + SET LOCAL ROLE"]
     end
@@ -105,10 +105,10 @@ Cuando se emite un access token, los protocol mappers de Keycloak inyectan estos
 La librería compartida `@medicitas/auth` provee middlewares y extractores de contexto:
 
 ```typescript
-import { requiereTenantContext, extractTenantContext } from '@medicitas/auth';
+import { requireTenantContext, extractTenantContext } from '@medicitas/auth';
 
 // 1. Como middleware de Express:
-app.use('/appointments', requiereTenantContext, (req, res) => {
+app.use('/appointments', requireTenantContext, (req, res) => {
   // res.locals.tenant está tipado como TenantContext
   const ctx = res.locals.tenant;
   // Se usa en transacciones de base de datos
@@ -117,7 +117,7 @@ app.use('/appointments', requiereTenantContext, (req, res) => {
   });
 });
 
-// 2. O resolviendo el contexto desde req.usuario:
+// 2. O resolviendo el contexto desde req.user:
 const ctx = extractTenantContext(req);
 ```
 
@@ -145,6 +145,7 @@ docker compose up -d keycloak db_clinics db_users db_appointments db_logs
 - **Consola de administración**: `http://localhost:8080`
 - **Realm**: `Sistema_Clinico`
 - **Archivo de configuración del realm**: `keycloak/realm-export.json` (se importa solo al arrancar con `--import-realm`).
+- **Seed de usuarios demo**: `keycloak/seed-users.json` (se carga de forma idempotente con `keycloak/seed-users.mjs` y el servicio `keycloak-seed` mediante Partial Import).
 
 ### Variables de entorno requeridas (.env)
 ```ini

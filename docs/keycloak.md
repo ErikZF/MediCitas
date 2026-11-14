@@ -28,14 +28,14 @@ flowchart TD
     end
 
     subgraph Services["Domain Microservices"]
-        AuthMiddleware["@medicitas/auth (requiereTenantContext / requiereToken)"]
+        AuthMiddleware["@medicitas/auth (requireTenantContext / requireToken)"]
         ApptSvc["appointments-service"]
         ClinicsSvc["clinics-service"]
         UsersSvc["users-service"]
         AuditSvc["audit-service"]
     end
 
-    subgraph Data["PostgreSQL 17 (Row-Level Security)"]
+    subgraph Data["PostgreSQL 18 (Row-Level Security)"]
         TenantTx["withTenantTx(db, ctx, tx)"]
         RLS["app_set_session_context + SET LOCAL ROLE"]
     end
@@ -105,10 +105,10 @@ When an access token is issued, Keycloak's protocol mappers inject the following
 The shared library `@medicitas/auth` provides middleware and context extractors:
 
 ```typescript
-import { requiereTenantContext, extractTenantContext } from '@medicitas/auth';
+import { requireTenantContext, extractTenantContext } from '@medicitas/auth';
 
 // 1. As an Express middleware:
-app.use('/appointments', requiereTenantContext, (req, res) => {
+app.use('/appointments', requireTenantContext, (req, res) => {
   // res.locals.tenant is typed as TenantContext
   const ctx = res.locals.tenant;
   // Use in database transactions
@@ -117,7 +117,7 @@ app.use('/appointments', requiereTenantContext, (req, res) => {
   });
 });
 
-// 2. Or resolving context from req.usuario:
+// 2. Or resolving context from req.user:
 const ctx = extractTenantContext(req);
 ```
 
@@ -145,6 +145,7 @@ docker compose up -d keycloak db_clinics db_users db_appointments db_logs
 - **Administration Console**: `http://localhost:8080`
 - **Realm**: `Sistema_Clinico`
 - **Realm configuration file**: `keycloak/realm-export.json` (auto-imported on startup via `--import-realm`).
+- **Demo users seed**: `keycloak/seed-users.json` (loaded idempotently via `keycloak/seed-users.mjs` and the `keycloak-seed` service using Keycloak Partial Import).
 
 ### Required Environment Variables (.env)
 ```ini
