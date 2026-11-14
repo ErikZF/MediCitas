@@ -116,7 +116,7 @@ flowchart TD
 
 En una arquitectura de microservicios con bases aisladas:
 1. **Sin llaves foráneas entre bases:** las restricciones de llave foránea entre bases de distintos servicios se reemplazan por referencias lógicas (`UUID`). Los identificadores generados usan **UUID v7** (RFC 9562) mediante `uuidv7()` nativo para mantener localidad temporal en índices B-tree.
-2. **Índices sobre las llaves lógicas:** cada columna que referencia a otro servicio (por ejemplo `clinic_id`, `professional_id`, `patient_id`) tiene su propio índice B-tree para optimizar los planes de ejecución y el filtrado por tenant.
+2. **Índices sobre las referencias lógicas:** las columnas que referencian a otro servicio (por ejemplo `clinic_id`, `professional_id`, `patient_id`) están cubiertas por índices B-tree compuestos que empiezan con `clinic_id`, uno por cada consulta a la que sirven. Cada uno se justifica con su plan de ejecución en [indexes.es.md](indexes.es.md).
 3. **Llaves compuestas listas para sharding:** las tablas por clínica incluyen `clinic_id` en sus llaves primarias, llaves foráneas intra-base, restricciones únicas y restricciones `EXCLUDE USING gist` para permitir particionamiento o sharding horizontal por `clinic_id`.
 4. **Validación de la integridad:** la consistencia de negocio entre servicios se impone en la capa de aplicación, mediante verificaciones transaccionales o mensajería asíncrona.
 
