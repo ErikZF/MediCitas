@@ -25,7 +25,7 @@ describe.skipIf(!url)('booking (RF9)', () => {
       workingHours: [{ weekday: 1, startTime: '08:00', endTime: '12:00' }, { weekday: 1, startTime: '13:00', endTime: '17:00' }],
     });
     await app.pool.query(
-      `INSERT INTO schedule_block (clinic_id, professional_id, starts_at, ends_at, reason) VALUES ($1, $2, $3, $4, 'Reunión')`,
+      `INSERT INTO schedule_block (clinic_id, professional_id, starts_at, ends_at, reason) VALUES ($1, $2, $3, $4, 'Meeting')`,
       [CLINIC_A, PROF_2, at('10:00'), at('11:00')],
     );
   });

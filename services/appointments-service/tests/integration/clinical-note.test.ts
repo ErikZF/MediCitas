@@ -57,20 +57,20 @@ describe.skipIf(!url)('clinical note (RF15) and its audit events (RF18)', () => 
   test('the professional who attended writes, reads and edits the note; each access is one audit event', async () => {
     const appointmentId = await appointmentOf('attended', 7);
 
-    const created = await note('POST', appointmentId, prof1, { content: 'Dolor lumbar. Reposo 3 días.' });
+    const created = await note('POST', appointmentId, prof1, { content: 'Lower back pain. Rest for 3 days.' });
     assert.equal(created.status, 201);
     assert.equal(created.body.appointmentId, appointmentId);
     assert.equal(created.body.professionalId, PROF_1);
-    assert.equal(created.body.content, 'Dolor lumbar. Reposo 3 días.');
+    assert.equal(created.body.content, 'Lower back pain. Rest for 3 days.');
     const noteId = created.body.clinicalNoteId as string;
 
     const read = await note('GET', appointmentId, prof1);
     assert.equal(read.status, 200);
     assert.deepEqual(read.body, created.body);
 
-    const edited = await note('PUT', appointmentId, prof1, { content: 'Dolor lumbar. Reposo 5 días.' });
+    const edited = await note('PUT', appointmentId, prof1, { content: 'Lower back pain. Rest for 5 days.' });
     assert.equal(edited.status, 200);
-    assert.equal(edited.body.content, 'Dolor lumbar. Reposo 5 días.');
+    assert.equal(edited.body.content, 'Lower back pain. Rest for 5 days.');
     assert.equal(edited.body.clinicalNoteId, noteId);
 
     const events = await auditEvents(noteId);
@@ -187,9 +187,9 @@ describe.skipIf(!url)('clinical note (RF15) and its audit events (RF18)', () => 
     // Make every new outbox row fail, as a full disk or a broken grant would.
     await app.pool.query('ALTER TABLE outbox ADD CONSTRAINT test_outbox_down CHECK (false) NOT VALID');
     try {
-      assert.notEqual((await note('POST', appointmentId, prof1, { content: 'Nota' })).status, 201);
+      assert.notEqual((await note('POST', appointmentId, prof1, { content: 'Note' })).status, 201);
       assert.notEqual((await note('GET', existing, prof1)).status, 200);
-      assert.notEqual((await note('PUT', existing, prof1, { content: 'Después' })).status, 200);
+      assert.notEqual((await note('PUT', existing, prof1, { content: 'Updated' })).status, 200);
     } finally {
       await app.pool.query('ALTER TABLE outbox DROP CONSTRAINT test_outbox_down');
     }

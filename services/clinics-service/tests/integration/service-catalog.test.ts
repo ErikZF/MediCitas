@@ -39,11 +39,11 @@ describe.skipIf(!url)('RF3 through normal clinics-service startup', () => {
   beforeAll(async () => {
     database = await createTestDatabase(url!);
     await database.pool.query(`INSERT INTO clinic (clinic_id, identifier, name, time_zone)
-      VALUES ($1, 'rf3-a', 'Clínica A', 'America/Costa_Rica'),
-             ($2, 'rf3-b', 'Clínica B', 'America/Panama');
+      VALUES ($1, 'rf3-a', 'Clinic A', 'America/Costa_Rica'),
+             ($2, 'rf3-b', 'Clinic B', 'America/Panama');
     `, [clinic, otherClinic]);
     await database.pool.query('INSERT INTO specialty (specialty_id, name) VALUES ($1, $2), ($3, $4)',
-      [specialty, 'Medicina general', otherSpecialty, 'Cardiología']);
+      [specialty, 'General medicine', otherSpecialty, 'Cardiology']);
     await database.pool.query(`INSERT INTO service (service_id, clinic_id, specialty_id, name, duration_minutes)
       VALUES ($1, $2, $3, $4, 45)`, [foreignService, otherClinic, specialty, input.name]);
 
@@ -173,8 +173,8 @@ describe.skipIf(!url)('RF3 through normal clinics-service startup', () => {
     const response = await fetch(`${base}/specialties`, { headers: { authorization: `Bearer ${adminToken}` } });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), [
-      { specialtyId: otherSpecialty, name: 'Cardiología' },
-      { specialtyId: specialty, name: 'Medicina general' },
+      { specialtyId: otherSpecialty, name: 'Cardiology' },
+      { specialtyId: specialty, name: 'General medicine' },
     ]);
     const denied = await fetch(`${base}/specialties`, { headers: { authorization: `Bearer ${receptionToken}` } });
     assert.equal(denied.status, 403);

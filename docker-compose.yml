@@ -96,7 +96,7 @@ services:
       CLIENT_ID: ${CLIENT_ID}
       BASE_URL: ${BASE_URI}:${API_PORT}
 
-      # Pruebas de integracion
+      # Integration tests
       KEYCLOAK_TEST_CLIENT_ID: ${KEYCLOAK_TEST_CLIENT_ID}
       KEYCLOAK_TEST_PASSWORD: ${KEYCLOAK_TEST_PASSWORD}
     ports:

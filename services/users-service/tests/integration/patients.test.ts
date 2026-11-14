@@ -188,7 +188,7 @@ describe.skipIf(!url)('RF14 patients and repeatable users outbox upgrade', () =>
 
   test('membership is tenant-scoped with RLS; professional can check it but cannot write and headers do not authorize', async () => {
     await database.pool.query(`INSERT INTO patient (patient_id, clinic_id, identification, full_name, birth_date)
-      VALUES ($1, $2, 'foreign', 'Otra clínica', '1980-01-01')`, [foreignPatient, foreignClinic]);
+      VALUES ($1, $2, 'foreign', 'Other clinic', '1980-01-01')`, [foreignPatient, foreignClinic]);
     for (const patientId of [foreignPatient, id(9999), 'invalid']) {
       const response = await request('GET', `/patients/${patientId}`);
       assert.equal(response.status, 404);

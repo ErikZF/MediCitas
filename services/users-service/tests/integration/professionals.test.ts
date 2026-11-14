@@ -101,7 +101,7 @@ describe.skipIf(!url)('RF4 professional registration through users and clinics',
              ($5, 'rf4-reception', $6, 'receptionist', true)`,
     [caller, targetUser, foreignUser, inactiveUser, wrongRoleUser, clinic, otherClinic]);
     await clinics.pool.query('INSERT INTO specialty (specialty_id, name) VALUES ($1, $2), ($3, $4)',
-      [specialty, 'General', otherSpecialty, 'Cardiología']);
+      [specialty, 'General', otherSpecialty, 'Cardiology']);
 
     const { publicKey, privateKey } = await generateKeyPair('RS256');
     const jwk = { ...await exportJWK(publicKey), kid: 'rf4-runtime', alg: 'RS256', use: 'sig' };

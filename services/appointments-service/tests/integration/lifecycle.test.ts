@@ -48,16 +48,16 @@ describe.skipIf(!url)('appointment life cycle (RF10-RF13)', () => {
   describe('before the appointments start', () => {
     test('RF11: cancel keeps the reason and who cancelled, and frees the time', async () => {
       const id = await book(PROF_1, 1, '08:00');
-      const result = await action(id, 'cancel', { reason: 'Paciente viaja' });
+      const result = await action(id, 'cancel', { reason: 'Patient travelling' });
       assert.equal(result.status, 200);
       assert.equal(result.body.status, 'cancelled');
-      assert.equal(result.body.cancelReason, 'Paciente viaja');
+      assert.equal(result.body.cancelReason, 'Patient travelling');
       const stored = await app.pool.query('SELECT cancelled_by FROM appointment WHERE appointment_id = $1', [id]);
       assert.equal(stored.rows[0].cancelled_by, USER);
 
       ids.rebooked = await book(PROF_1, 2, '08:00');
 
-      const again = await action(id, 'cancel', { reason: 'Otra vez' });
+      const again = await action(id, 'cancel', { reason: 'Retry' });
       assert.equal(again.status, 409);
       assert.equal(again.body.code, 'invalid_transition');
     });
@@ -141,7 +141,7 @@ describe.skipIf(!url)('appointment life cycle (RF10-RF13)', () => {
       assert.equal(result.status, 200);
       assert.equal(result.body.status, 'attended');
 
-      for (const [name, body] of [['outcome', { outcome: 'no_show' }], ['cancel', { reason: 'Tarde' }], ['reschedule', { startsAt: at('16:00') }]] as const) {
+      for (const [name, body] of [['outcome', { outcome: 'no_show' }], ['cancel', { reason: 'Late' }], ['reschedule', { startsAt: at('16:00') }]] as const) {
         const refused = await action(ids.late!, name, body);
         assert.equal(refused.status, 409, name);
         assert.equal(refused.body.code, 'invalid_transition', name);
@@ -156,7 +156,7 @@ describe.skipIf(!url)('appointment life cycle (RF10-RF13)', () => {
     });
 
     test('an appointment that already started cannot be cancelled or rescheduled', async () => {
-      const cancel = await action(ids.withProf2!, 'cancel', { reason: 'Tarde' });
+      const cancel = await action(ids.withProf2!, 'cancel', { reason: 'Late' });
       assert.equal(cancel.body.code, 'appointment_started');
       const reschedule = await action(ids.withProf2!, 'reschedule', { startsAt: at('16:00') });
       assert.equal(reschedule.body.code, 'appointment_started');
