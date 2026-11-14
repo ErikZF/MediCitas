@@ -48,7 +48,7 @@ describe('mapPgError', () => {
   });
 
   test('a non-Postgres error returns null', () => {
-    assert.equal(mapPgError(new Error('otra cosa')), null);
+    assert.equal(mapPgError(new Error('something else')), null);
     assert.equal(mapPgError(Object.assign(new Error('x'), { code: 'ECONNRESET' })), null);
   });
 

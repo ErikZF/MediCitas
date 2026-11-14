@@ -220,11 +220,11 @@ CREATE INDEX idx_clinical_note_professional_id ON clinical_note (professional_id
 CREATE TABLE outbox (
     event_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clinic_id     UUID        NOT NULL,
-    aggregate_id  UUID        NOT NULL,   -- appointment_id o professional_id
-    event_type    VARCHAR(64) NOT NULL,   -- AgendaChanged, AppointmentBooked…
+    aggregate_id  UUID        NOT NULL,   -- appointment_id or professional_id
+    event_type    VARCHAR(64) NOT NULL,   -- AgendaChanged, AppointmentBooked...
     payload       JSONB       NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    published_at  TIMESTAMPTZ             -- NULL = pendiente
+    published_at  TIMESTAMPTZ             -- NULL = pending
 );
 
 CREATE INDEX idx_outbox_pending ON outbox (created_at) WHERE published_at IS NULL;

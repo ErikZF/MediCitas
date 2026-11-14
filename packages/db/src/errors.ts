@@ -36,42 +36,42 @@ export const DEFAULT_CONSTRAINT_ERRORS: Readonly<Record<string, ErrorMapping>> =
   no_overlap_professional: {
     status: 409,
     code: 'slot_taken',
-    message: 'El espacio ya fue tomado.',
+    message: 'The time slot has already been taken.',
   },
   no_overlap_patient: {
     status: 409,
     code: 'patient_overlap',
-    message: 'El paciente ya tiene una cita en ese horario.',
+    message: 'The patient already has an appointment at that time.',
   },
   no_overlap_working_hours: {
     status: 409,
     code: 'schedule_overlap',
-    message: 'El horario se solapa con otro bloque del mismo día.',
+    message: 'The schedule overlaps with another block on the same day.',
   },
 };
 
 const BY_SQLSTATE: Readonly<Record<string, ErrorMapping>> = {
-  '23P01': { status: 409, code: 'overlap', message: 'El recurso se solapa con otro existente.' },
-  '23505': { status: 409, code: 'duplicate', message: 'Ya existe un registro con esos datos.' },
-  '23503': { status: 422, code: 'invalid_reference', message: 'Una referencia no existe.' },
-  '23502': { status: 422, code: 'missing_field', message: 'Falta un dato obligatorio.' },
-  '23514': { status: 422, code: 'invalid_value', message: 'Un dato no cumple las reglas del dominio.' },
-  '22P02': { status: 422, code: 'invalid_input', message: 'Un dato tiene un formato inválido.' },
-  '22007': { status: 422, code: 'invalid_input', message: 'Un dato tiene un formato inválido.' },
-  '22008': { status: 422, code: 'invalid_input', message: 'Un dato tiene un formato inválido.' },
-  '22003': { status: 422, code: 'invalid_input', message: 'Un dato está fuera de rango.' },
-  '22001': { status: 422, code: 'invalid_input', message: 'Un dato es demasiado largo.' },
-  '22023': { status: 422, code: 'invalid_input', message: 'Un dato tiene un valor inválido.' },
-  '42501': { status: 403, code: 'forbidden', message: 'No tiene permiso para esta operación.' },
-  '40001': { status: 409, code: 'concurrency_conflict', message: 'Hubo un conflicto concurrente. Intente de nuevo.' },
-  '40P01': { status: 409, code: 'concurrency_conflict', message: 'Hubo un conflicto concurrente. Intente de nuevo.' },
-  '57014': { status: 503, code: 'timeout', message: 'La operación tardó demasiado.' },
-  '53300': { status: 503, code: 'database_unavailable', message: 'La base de datos no está disponible.' },
-  '57P01': { status: 503, code: 'database_unavailable', message: 'La base de datos no está disponible.' },
+  '23P01': { status: 409, code: 'overlap', message: 'The resource overlaps with an existing one.' },
+  '23505': { status: 409, code: 'duplicate', message: 'A record with those details already exists.' },
+  '23503': { status: 422, code: 'invalid_reference', message: 'A referenced record does not exist.' },
+  '23502': { status: 422, code: 'missing_field', message: 'A required field is missing.' },
+  '23514': { status: 422, code: 'invalid_value', message: 'A value violates domain rules.' },
+  '22P02': { status: 422, code: 'invalid_input', message: 'A value has an invalid format.' },
+  '22007': { status: 422, code: 'invalid_input', message: 'A value has an invalid format.' },
+  '22008': { status: 422, code: 'invalid_input', message: 'A value has an invalid format.' },
+  '22003': { status: 422, code: 'invalid_input', message: 'A value is out of range.' },
+  '22001': { status: 422, code: 'invalid_input', message: 'A value is too long.' },
+  '22023': { status: 422, code: 'invalid_input', message: 'A value is invalid.' },
+  '42501': { status: 403, code: 'forbidden', message: 'You do not have permission for this operation.' },
+  '40001': { status: 409, code: 'concurrency_conflict', message: 'A concurrency conflict occurred. Please try again.' },
+  '40P01': { status: 409, code: 'concurrency_conflict', message: 'A concurrency conflict occurred. Please try again.' },
+  '57014': { status: 503, code: 'timeout', message: 'The operation timed out.' },
+  '53300': { status: 503, code: 'database_unavailable', message: 'The database is unavailable.' },
+  '57P01': { status: 503, code: 'database_unavailable', message: 'The database is unavailable.' },
 };
 
-const FALLBACK: ErrorMapping = { status: 500, code: 'database_error', message: 'Error interno de la base de datos.' };
-const CONNECTION: ErrorMapping = { status: 503, code: 'database_unavailable', message: 'La base de datos no está disponible.' };
+const FALLBACK: ErrorMapping = { status: 500, code: 'database_error', message: 'Internal database error.' };
+const CONNECTION: ErrorMapping = { status: 503, code: 'database_unavailable', message: 'The database is unavailable.' };
 
 function isPgErrorLike(value: unknown): value is PgErrorLike {
   return typeof value === 'object'
