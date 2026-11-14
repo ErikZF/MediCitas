@@ -9,7 +9,7 @@ import { adminA, patient, PROF_1, receptionA, SERVICE_30, startBookingApp, type 
 //   block first    -> the booking is rejected with 422 professional_unavailable
 //
 // What must never happen is a booked appointment inside a block that did not report
-// it. Without the agenda lock (booking: shared, block: exclusive), the booking could
+// it. Without the agenda lock both take (db/locks.ts), the booking could
 // check the blocks before the block commits, and the block could look for conflicts
 // before the booking commits: both succeed and neither sees the other.
 const url = process.env.TEST_DATABASE_URL;

@@ -105,7 +105,7 @@ export async function replaceWorkingHours(
   await deps.directory.assertInClinic(ctx, professionalId);
 
   const saved = await withTenantTx(deps.db, ctx, async (tx) => {
-    await lockProfessionalAgenda(tx, professionalId, 'exclusive');
+    await lockProfessionalAgenda(tx, professionalId);
     // Every day of the professional may change (E14 backstop for the invalidation below).
     if (deps.cache) await recordAgendaChange(tx, ctx, professionalId, null);
     await tx.delete(workingHours).where(eq(workingHours.professionalId, professionalId));
@@ -159,7 +159,7 @@ export async function addBlock(
   const endsAt = new Date(input.endsAt);
 
   const added = await withTenantTx(deps.db, ctx, async (tx) => {
-    await lockProfessionalAgenda(tx, professionalId, 'exclusive');
+    await lockProfessionalAgenda(tx, professionalId);
     if (deps.cache) await recordAgendaChange(tx, ctx, professionalId, null);
 
     const [row] = await tx.insert(scheduleBlock)

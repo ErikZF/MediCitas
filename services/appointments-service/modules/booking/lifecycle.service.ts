@@ -15,7 +15,7 @@ import { eq } from 'drizzle-orm';
 import { hasPermission, type Permission } from '@medicitas/auth';
 import { withTenantTx, type TenantContext, type Transaction } from '@medicitas/db';
 import { recordAgendaChange } from '../../db/agenda-outbox.ts';
-import { lockProfessionalAgenda } from '../../db/locks.ts';
+import { lockAgendas } from '../../db/locks.ts';
 import { appointment } from '../../db/schema.ts';
 import { possibleLocalDates } from '../../cache/agenda-cache.ts';
 import { ForbiddenError, NotFoundError, TransitionError, ValidationError } from '../../domain/errors.ts';
@@ -85,11 +85,8 @@ export async function rescheduleAppointment(
     assertBooked(old, 'rescheduled');
     assertNotStarted(old, now);
 
-    // Shared agenda locks never wait on each other; the fixed order keeps it that way
-    // if one of them ever becomes exclusive.
-    for (const professionalId of [...new Set([old.professionalId, slot.professionalId])].sort()) {
-      await lockProfessionalAgenda(tx, professionalId, 'shared');
-    }
+    // Both professionals (old and new) and the patient, in the global order of db/locks.ts.
+    await lockAgendas(tx, { professionals: [old.professionalId, slot.professionalId], patient: old.patientId });
     await assertSlotBookable(tx, slot);
 
     await tx.update(appointment)
