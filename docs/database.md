@@ -117,7 +117,8 @@ flowchart TD
 In a microservices architecture with isolated databases:
 1. **No Cross-Database Foreign Keys:** Foreign key constraints across different service databases are replaced with logical references (`UUID`).
 2. **Logical Foreign Key Indexes:** Each cross-reference column (e.g., `clinic_id`, `professional_id`, `patient_id`) has a dedicated B-tree index to optimize query execution plans and tenant filtering.
-3. **Integrity Validation:** Cross-service business consistency is enforced in the application layer and through transactional checks or asynchronous messaging.
+3. **Shard-Ready Composite Keys:** Tenant-scoped tables include `clinic_id` in their primary keys, composite intra-database foreign keys, unique constraints, and `EXCLUDE USING gist` constraints so PostgreSQL can partition or horizontally shard by `clinic_id`.
+4. **Integrity Validation:** Cross-service business consistency is enforced in the application layer and through transactional checks or asynchronous messaging.
 
 ---
 
