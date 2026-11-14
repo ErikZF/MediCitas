@@ -35,7 +35,7 @@ flowchart TD
         AuditSvc["audit-service"]
     end
 
-    subgraph Data["PostgreSQL 17 (Row-Level Security)"]
+    subgraph Data["PostgreSQL 18 (Row-Level Security)"]
         TenantTx["withTenantTx(db, ctx, tx)"]
         RLS["app_set_session_context + SET LOCAL ROLE"]
     end
