@@ -47,6 +47,9 @@ export const appointment = pgTable('appointment', {
   rescheduledFromId: uuid('rescheduled_from_id'),
   createdBy: uuid('created_by').notNull(),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
+  statusChangedAt: timestamptz('status_changed_at').notNull().defaultNow(),
+  statusChangedBy: uuid('status_changed_by'),
+  updatedAt: timestamptz('updated_at').notNull().defaultNow(),
 });
 
 export const clinicalNote = pgTable('clinical_note', {

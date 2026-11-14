@@ -52,8 +52,12 @@ describe.skipIf(!url)('appointment life cycle (RF10-RF13)', () => {
       assert.equal(result.status, 200);
       assert.equal(result.body.status, 'cancelled');
       assert.equal(result.body.cancelReason, 'Patient travelling');
-      const stored = await app.pool.query('SELECT cancelled_by FROM appointment WHERE appointment_id = $1', [id]);
+      assert.equal(result.body.statusChangedAt, clock.toISOString());
+      assert.equal(result.body.statusChangedBy, USER);
+      assert.equal(result.body.updatedAt, clock.toISOString());
+      const stored = await app.pool.query('SELECT cancelled_by, status_changed_by FROM appointment WHERE appointment_id = $1', [id]);
       assert.equal(stored.rows[0].cancelled_by, USER);
+      assert.equal(stored.rows[0].status_changed_by, USER);
 
       ids.rebooked = await book(PROF_1, 2, '08:00');
 
@@ -140,6 +144,10 @@ describe.skipIf(!url)('appointment life cycle (RF10-RF13)', () => {
       const result = await action(ids.late!, 'outcome', { outcome: 'attended' });
       assert.equal(result.status, 200);
       assert.equal(result.body.status, 'attended');
+      assert.equal(result.body.createdAt, '2026-01-01T00:00:00.000Z');
+      assert.equal(result.body.statusChangedAt, clock.toISOString());
+      assert.equal(result.body.statusChangedBy, USER);
+      assert.equal(result.body.updatedAt, clock.toISOString());
 
       for (const [name, body] of [['outcome', { outcome: 'no_show' }], ['cancel', { reason: 'Late' }], ['reschedule', { startsAt: at('16:00') }]] as const) {
         const refused = await action(ids.late!, name, body);

@@ -40,6 +40,10 @@ export interface AppointmentDto {
   cancelReason: string | null;
   /** The appointment this one replaced (RF10), if any. */
   rescheduledFromId: string | null;
+  createdAt: string;
+  statusChangedAt: string;
+  statusChangedBy: string | null;
+  updatedAt: string;
 }
 
 export const asApp = { dbRoles: MEDICITAS_APP_ROLE } as const;
@@ -56,6 +60,10 @@ export function toAppointmentDto(row: typeof appointment.$inferSelect): Appointm
     status: row.status,
     cancelReason: row.cancelReason,
     rescheduledFromId: row.rescheduledFromId,
+    createdAt: row.createdAt.toISOString(),
+    statusChangedAt: row.statusChangedAt.toISOString(),
+    statusChangedBy: row.statusChangedBy,
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -65,9 +73,10 @@ export async function bookAppointment(deps: BookingDeps, ctx: TenantContext, inp
   }
 
   // Other services first, outside the transaction.
+  const now = deps.now?.() ?? new Date();
   const service = await deps.catalog.getBookableService(ctx, input.serviceId);
   assertTakesNewBookings(service);
-  const slot = slotFor(input.professionalId, service, new Date(input.startsAt), deps.now?.() ?? new Date());
+  const slot = slotFor(input.professionalId, service, new Date(input.startsAt), now);
   await deps.patients.assertInClinic(ctx, input.patientId);
 
   const booked = await withTenantTx(deps.db, ctx, async (tx) => {
@@ -86,6 +95,10 @@ export async function bookAppointment(deps: BookingDeps, ctx: TenantContext, inp
       durationMinutes: service.durationMinutes,
       status: 'booked',
       createdBy: ctx.userId,
+      createdAt: now,
+      statusChangedAt: now,
+      statusChangedBy: ctx.userId,
+      updatedAt: now,
     }).returning();
 
     return toAppointmentDto(row!);

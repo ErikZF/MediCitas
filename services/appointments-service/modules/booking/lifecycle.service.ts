@@ -91,7 +91,14 @@ export async function rescheduleAppointment(
     }
     await assertSlotBookable(tx, slot);
 
-    await tx.update(appointment).set({ status: 'rescheduled' }).where(eq(appointment.appointmentId, old.appointmentId));
+    await tx.update(appointment)
+      .set({
+        status: 'rescheduled',
+        statusChangedAt: now,
+        statusChangedBy: ctx.userId,
+        updatedAt: now,
+      })
+      .where(eq(appointment.appointmentId, old.appointmentId));
     const [row] = await tx.insert(appointment).values({
       clinicId: old.clinicId,
       professionalId: slot.professionalId,
@@ -103,6 +110,10 @@ export async function rescheduleAppointment(
       status: 'booked',
       rescheduledFromId: old.appointmentId,
       createdBy: ctx.userId,
+      createdAt: now,
+      statusChangedAt: now,
+      statusChangedBy: ctx.userId,
+      updatedAt: now,
     }).returning();
 
     return toAppointmentDto(row!);
@@ -131,7 +142,14 @@ export async function cancelAppointment(
     assertBooked(row, 'cancelled');
     assertNotStarted(row, now);
     const [updated] = await tx.update(appointment)
-      .set({ status: 'cancelled', cancelReason: input.reason, cancelledBy: ctx.userId })
+      .set({
+        status: 'cancelled',
+        cancelReason: input.reason,
+        cancelledBy: ctx.userId,
+        statusChangedAt: now,
+        statusChangedBy: ctx.userId,
+        updatedAt: now,
+      })
       .where(eq(appointment.appointmentId, appointmentId))
       .returning();
     return toAppointmentDto(updated!);
@@ -174,7 +192,12 @@ export async function recordOutcome(
       throw new ValidationError('The appointment has not started yet.', 'appointment_not_started');
     }
     const [updated] = await tx.update(appointment)
-      .set({ status: input.outcome })
+      .set({
+        status: input.outcome,
+        statusChangedAt: now,
+        statusChangedBy: ctx.userId,
+        updatedAt: now,
+      })
       .where(eq(appointment.appointmentId, appointmentId))
       .returning();
     return toAppointmentDto(updated!);
