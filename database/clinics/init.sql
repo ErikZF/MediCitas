@@ -208,3 +208,8 @@ GRANT SELECT ON clinic, specialty, service TO db_receptionist, db_professional;
 
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO db_admin, db_receptionist, db_professional, medicitas_app;
 
+BEGIN;
+-- Only pending registrations carry these values. Existing clinics stay active as before.
+ALTER TABLE public.clinic ADD COLUMN IF NOT EXISTS bootstrap_admin_id uuid;
+ALTER TABLE public.clinic ADD COLUMN IF NOT EXISTS bootstrap_username varchar(128);
+COMMIT;

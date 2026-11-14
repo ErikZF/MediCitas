@@ -4,6 +4,11 @@ import { boolean, integer, pgTable, primaryKey, text, uuid, varchar } from 'driz
 // Query mappings only; constraints and RLS remain in database/clinics/init.sql.
 export const clinic = pgTable('clinic', {
   clinicId: uuid('clinic_id').primaryKey().default(sql`gen_uuid_v7()`),
+  identifier: varchar('identifier', { length: 32 }).notNull(),
+  name: varchar('name', { length: 128 }).notNull(),
+  isActive: boolean('is_active').notNull(),
+  bootstrapAdminId: uuid('bootstrap_admin_id'),
+  bootstrapUsername: varchar('bootstrap_username', { length: 128 }),
   timeZone: text('time_zone').notNull(),
 });
 

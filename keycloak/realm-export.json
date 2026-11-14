@@ -33,12 +33,29 @@
   "defaultGroups":["/users-MediCitas"],
   "realm": "${REALM_NAME}",
   "enabled": true,
+  "accessTokenLifespan": 300,
   "defaultSignatureAlgorithm": "RS256",
   "registrationAllowed": true,
   "rememberMe": true,
   "verifyEmail": false,
   "loginWithEmailAllowed": false,
+  "clientScopeMappings": {
+    "realm-management": [{ "client": "medicitas-user-admin", "roles": ["manage-users"] }]
+  },
   "clients": [
+    {
+      "clientId": "medicitas-user-admin",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KEYCLOAK_USER_ADMIN_SECRET:}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": ["roles", "basic"]
+    },
     {
       "clientId": "${CLIENT_ID}",
       "name": "",
@@ -182,6 +199,7 @@
       "consentRequired": false,
       "fullScopeAllowed": true,
       "defaultClientScopes": [
+        "basic",
         "profile",
         "roles"
       ],
@@ -258,6 +276,12 @@
     }
   ],
   "users": [
+    {
+      "username": "service-account-medicitas-user-admin",
+      "enabled": true,
+      "serviceAccountClientId": "medicitas-user-admin",
+      "clientRoles": { "realm-management": ["manage-users"] }
+    },
     {
       "username": "test_role",
       "enabled": true,
