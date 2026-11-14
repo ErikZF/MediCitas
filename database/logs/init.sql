@@ -77,7 +77,7 @@ $$ LANGUAGE plpgsql;
 -- Protected by the engine: a trigger rejects UPDATE, DELETE and TRUNCATE.
 -- ---------------------------------------------------------------------
 CREATE TABLE audit_log (
-    audit_log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    audit_log_id UUID NOT NULL DEFAULT gen_random_uuid(),
     clinic_id    UUID        NOT NULL,                       -- Logical reference to Clinics Service
     app_user_id  UUID        NOT NULL,                       -- Logical reference to Users Service
     patient_id   UUID        NOT NULL,                       -- Logical reference to Users Service
@@ -86,7 +86,8 @@ CREATE TABLE audit_log (
     resource     VARCHAR(32) NOT NULL
                  CHECK (resource IN ('clinical_note', 'patient_contact')),
     resource_id  UUID        NOT NULL,                       -- id of the note or the patient
-    occurred_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    occurred_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (clinic_id, audit_log_id)
 );
 
 CREATE INDEX idx_audit_log_clinic_id ON audit_log (clinic_id);

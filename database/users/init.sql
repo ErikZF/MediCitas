@@ -104,12 +104,13 @@ CREATE INDEX idx_app_user_clinic_id ON app_user (clinic_id);
 -- professional: healthcare professionals linked to app_user
 -- ---------------------------------------------------------------------
 CREATE TABLE professional (
-    professional_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    professional_id UUID NOT NULL DEFAULT gen_random_uuid(),
     clinic_id       UUID         NOT NULL,                     -- Logical reference to Clinics Service
-    app_user_id     UUID         NOT NULL UNIQUE REFERENCES app_user (app_user_id),
+    app_user_id     UUID         NOT NULL REFERENCES app_user (app_user_id),
     full_name       VARCHAR(128) NOT NULL,
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
-    UNIQUE (professional_id, clinic_id)
+    PRIMARY KEY (clinic_id, professional_id),
+    UNIQUE (clinic_id, app_user_id)
 );
 
 CREATE INDEX idx_professional_clinic_id ON professional (clinic_id);
@@ -122,9 +123,9 @@ CREATE TABLE professional_specialty (
     professional_id UUID NOT NULL,
     specialty_id    UUID NOT NULL,                              -- Logical reference to Clinics Service
     clinic_id       UUID NOT NULL,                              -- Logical reference to Clinics Service
-    PRIMARY KEY (professional_id, specialty_id),
-    FOREIGN KEY (professional_id, clinic_id)
-        REFERENCES professional (professional_id, clinic_id)
+    PRIMARY KEY (clinic_id, professional_id, specialty_id),
+    FOREIGN KEY (clinic_id, professional_id)
+        REFERENCES professional (clinic_id, professional_id)
         ON DELETE CASCADE
 );
 
@@ -136,13 +137,14 @@ CREATE INDEX idx_professional_specialty_clinic_id ON professional_specialty (cli
 -- clinic_id is a logical reference to Clinics Service
 -- ---------------------------------------------------------------------
 CREATE TABLE patient (
-    patient_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    patient_id     UUID NOT NULL DEFAULT gen_random_uuid(),
     clinic_id      UUID         NOT NULL,                      -- Logical reference to Clinics Service
     identification VARCHAR(32)  NOT NULL,                      -- national id / passport
     full_name      VARCHAR(128) NOT NULL,
     birth_date     DATE         NOT NULL,
     phone          VARCHAR(32),
     email          VARCHAR(128),
+    PRIMARY KEY (clinic_id, patient_id),
     UNIQUE (clinic_id, identification)
 );
 
@@ -220,12 +222,12 @@ CREATE POLICY professional_update_policy ON professional
     USING (
         app_is_platform_admin()
         OR (app_current_role() = 'clinic_admin' AND clinic_id = app_current_clinic_id())
-        OR (app_current_role() = 'professional' AND app_user_id = app_current_user_id())
+        OR (app_current_role() = 'professional' AND clinic_id = app_current_clinic_id() AND app_user_id = app_current_user_id())
     )
     WITH CHECK (
         app_is_platform_admin()
         OR (app_current_role() = 'clinic_admin' AND clinic_id = app_current_clinic_id())
-        OR (app_current_role() = 'professional' AND app_user_id = app_current_user_id())
+        OR (app_current_role() = 'professional' AND clinic_id = app_current_clinic_id() AND app_user_id = app_current_user_id())
     );
 
 CREATE POLICY professional_delete_policy ON professional
@@ -341,13 +343,14 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO db_admin, db_receptionist, db
 -- N10 owns relay delivery and its separate consumer permissions.
 
 CREATE TABLE public.outbox (
-    event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id UUID NOT NULL DEFAULT gen_random_uuid(),
     clinic_id UUID NOT NULL,
     aggregate_id UUID NOT NULL,
     event_type VARCHAR(64) NOT NULL,
     payload JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    published_at TIMESTAMPTZ
+    published_at TIMESTAMPTZ,
+    PRIMARY KEY (clinic_id, event_id)
 );
 
 ALTER TABLE public.outbox ENABLE ROW LEVEL SECURITY;

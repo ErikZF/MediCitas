@@ -85,12 +85,13 @@ CREATE TABLE specialty (
 -- service: clinic catalog
 -- --------------------------------------------------------------------
 CREATE TABLE service (
-    service_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service_id       UUID NOT NULL DEFAULT gen_random_uuid(),
     clinic_id        UUID NOT NULL REFERENCES clinic (clinic_id),
     specialty_id     UUID NOT NULL REFERENCES specialty (specialty_id),
     name             VARCHAR(128) NOT NULL,
     duration_minutes INT  NOT NULL CHECK (duration_minutes > 0),
     is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+    PRIMARY KEY (clinic_id, service_id),
     UNIQUE (clinic_id, name)
 );
 

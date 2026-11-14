@@ -82,14 +82,16 @@ $$ LANGUAGE plpgsql;
 -- clinic_id is a logical reference to Clinics Service
 -- ---------------------------------------------------------------------
 CREATE TABLE working_hours (
-    working_hours_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    working_hours_id UUID NOT NULL DEFAULT gen_random_uuid(),
     clinic_id        UUID     NOT NULL,                        -- Logical reference to Clinics Service
     professional_id  UUID     NOT NULL,                        -- Logical reference to Users Service
     weekday          SMALLINT NOT NULL CHECK (weekday BETWEEN 0 AND 6),   -- 0 = Sunday
     start_time       TIME     NOT NULL,
     end_time         TIME     NOT NULL,
+    PRIMARY KEY (clinic_id, working_hours_id),
     CHECK (start_time < end_time),   -- shifts crossing midnight are not supported
     CONSTRAINT no_overlap_working_hours EXCLUDE USING gist (
+        clinic_id                             WITH =,
         professional_id                       WITH =,
         weekday                               WITH =,
         timerange(start_time, end_time, '[)') WITH &&
@@ -105,12 +107,13 @@ CREATE INDEX idx_working_hours_professional_id ON working_hours (professional_id
 -- clinic_id is a logical reference to Clinics Service
 -- ---------------------------------------------------------------------
 CREATE TABLE schedule_block (
-    schedule_block_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    schedule_block_id UUID NOT NULL DEFAULT gen_random_uuid(),
     clinic_id         UUID        NOT NULL,                    -- Logical reference to Clinics Service
     professional_id   UUID        NOT NULL,                    -- Logical reference to Users Service
     starts_at         TIMESTAMPTZ NOT NULL,
     ends_at           TIMESTAMPTZ NOT NULL,
     reason            VARCHAR(256),
+    PRIMARY KEY (clinic_id, schedule_block_id),
     CHECK (starts_at < ends_at)
 );
 
@@ -126,7 +129,7 @@ CREATE TABLE professional_service (
     service_id      UUID NOT NULL,                             -- Logical reference to Clinics Service
     clinic_id       UUID NOT NULL,                             -- Logical reference to Clinics Service
     specialty_id    UUID NOT NULL,                             -- Logical reference to Clinics Service
-    PRIMARY KEY (professional_id, service_id)
+    PRIMARY KEY (clinic_id, professional_id, service_id)
 );
 
 CREATE INDEX idx_prof_service_professional_id ON professional_service (professional_id);
@@ -142,7 +145,7 @@ CREATE INDEX idx_prof_service_clinic_id ON professional_service (clinic_id);
 -- created_by / cancelled_by (Users Service)
 -- ---------------------------------------------------------------------
 CREATE TABLE appointment (
-    appointment_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    appointment_id      UUID NOT NULL DEFAULT gen_random_uuid(),
     clinic_id           UUID        NOT NULL,                  -- Logical reference to Clinics Service
     professional_id     UUID        NOT NULL,                  -- Logical reference to Users Service
     patient_id          UUID        NOT NULL,                  -- Logical reference to Users Service
@@ -154,23 +157,29 @@ CREATE TABLE appointment (
                         CHECK (status IN ('booked', 'attended', 'no_show', 'cancelled', 'rescheduled')),
     cancel_reason       VARCHAR(256),                          -- RF11
     cancelled_by        UUID,                                  -- Logical reference to Users Service (app_user_id)
-    rescheduled_from_id UUID UNIQUE REFERENCES appointment (appointment_id), -- RF10: an appointment is replaced at most once
+    rescheduled_from_id UUID,                                  -- RF10: an appointment is replaced at most once
     created_by          UUID        NOT NULL,                  -- Logical reference to Users Service (app_user_id)
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     status_changed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     status_changed_by   UUID,                                  -- Logical reference to Users Service (app_user_id)
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (clinic_id, appointment_id),
+    UNIQUE (clinic_id, rescheduled_from_id),
+    FOREIGN KEY (clinic_id, rescheduled_from_id)
+        REFERENCES appointment (clinic_id, appointment_id),
     CHECK (starts_at < ends_at),
     CHECK (ends_at = starts_at + make_interval(mins => duration_minutes)),   -- I4
     -- I1: a professional never has two active appointments that overlap.
     -- Enforced by the engine, also under concurrency.
     -- '[)' = start included, end excluded: back-to-back appointments are allowed.
     CONSTRAINT no_overlap_professional EXCLUDE USING gist (
+        clinic_id                           WITH =,
         professional_id                     WITH =,
         tstzrange(starts_at, ends_at, '[)') WITH &&
     ) WHERE (status = 'booked'),
     -- I2: a patient never has two active appointments that overlap.
     CONSTRAINT no_overlap_patient EXCLUDE USING gist (
+        clinic_id                           WITH =,
         patient_id                          WITH =,
         tstzrange(starts_at, ends_at, '[)') WITH &&
     ) WHERE (status = 'booked')
@@ -221,15 +230,19 @@ $$ LANGUAGE plpgsql;
 -- clinical_note: RF15 - Sensitive clinical notes per appointment
 -- ---------------------------------------------------------------------
 CREATE TABLE clinical_note (
-    clinical_note_id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    appointment_id     UUID        NOT NULL UNIQUE REFERENCES appointment (appointment_id),
+    clinical_note_id   UUID NOT NULL DEFAULT gen_random_uuid(),
+    appointment_id     UUID        NOT NULL,
     clinic_id          UUID        NOT NULL,                  -- Logical reference to Clinics Service
     professional_id    UUID        NOT NULL,                  -- Logical reference to Users Service
     appointment_status VARCHAR(16) NOT NULL DEFAULT 'attended'
                        CHECK (appointment_status = 'attended'),
     content            TEXT        NOT NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (clinic_id, clinical_note_id),
+    UNIQUE (clinic_id, appointment_id),
+    FOREIGN KEY (clinic_id, appointment_id)
+        REFERENCES appointment (clinic_id, appointment_id)
 );
 
 CREATE INDEX idx_clinical_note_appointment_id ON clinical_note (appointment_id);
@@ -244,13 +257,14 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 -- outbox: Transactional outbox for domain events
 -- ---------------------------------------------------------------------
 CREATE TABLE outbox (
-    event_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id      UUID NOT NULL DEFAULT gen_random_uuid(),
     clinic_id     UUID        NOT NULL,
     aggregate_id  UUID        NOT NULL,   -- appointment_id or professional_id
     event_type    VARCHAR(64) NOT NULL,   -- AgendaChanged, AppointmentBooked...
     payload       JSONB       NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    published_at  TIMESTAMPTZ             -- NULL = pending
+    published_at  TIMESTAMPTZ,            -- NULL = pending
+    PRIMARY KEY (clinic_id, event_id)
 );
 
 CREATE INDEX idx_outbox_pending ON outbox (created_at) WHERE published_at IS NULL;
