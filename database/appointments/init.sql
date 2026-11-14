@@ -157,6 +157,9 @@ CREATE TABLE appointment (
     rescheduled_from_id UUID UNIQUE REFERENCES appointment (appointment_id), -- RF10: an appointment is replaced at most once
     created_by          UUID        NOT NULL,                  -- Logical reference to Users Service (app_user_id)
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    status_changed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    status_changed_by   UUID,                                  -- Logical reference to Users Service (app_user_id)
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (starts_at < ends_at),
     CHECK (ends_at = starts_at + make_interval(mins => duration_minutes)),   -- I4
     -- I1: a professional never has two active appointments that overlap.
@@ -177,23 +180,42 @@ CREATE INDEX idx_appointment_clinic_id ON appointment (clinic_id);
 CREATE INDEX idx_appointment_professional_id ON appointment (professional_id);
 CREATE INDEX idx_appointment_patient_id ON appointment (patient_id);
 CREATE INDEX idx_appointment_status ON appointment (status);
+CREATE INDEX idx_appointment_clinic_updated_at ON appointment (clinic_id, updated_at);
+CREATE INDEX idx_appointment_clinic_status_changed_at ON appointment (clinic_id, status_changed_at);
 
 -- ---------------------------------------------------------------------
--- Status transition trigger (RF13)
+-- Status transition & audit timestamp trigger (RF13)
 -- ---------------------------------------------------------------------
 CREATE FUNCTION enforce_appointment_status_transition() RETURNS trigger AS $$
 BEGIN
-    IF NEW.status IS DISTINCT FROM OLD.status AND OLD.status <> 'booked' THEN
-        RAISE EXCEPTION 'Invalid status transition: % -> %', OLD.status, NEW.status
-            USING ERRCODE = 'check_violation';
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
+        IF OLD.status <> 'booked' THEN
+            RAISE EXCEPTION 'Invalid status transition: % -> %', OLD.status, NEW.status
+                USING ERRCODE = 'check_violation';
+        END IF;
+        IF NEW.status_changed_at IS NOT DISTINCT FROM OLD.status_changed_at THEN
+            NEW.status_changed_at := now();
+        END IF;
+    END IF;
+    IF NEW.updated_at IS NOT DISTINCT FROM OLD.updated_at THEN
+        NEW.updated_at := now();
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_appointment_status_transition
-BEFORE UPDATE OF status ON appointment
+BEFORE UPDATE ON appointment
 FOR EACH ROW EXECUTE FUNCTION enforce_appointment_status_transition();
+
+CREATE FUNCTION set_updated_at() RETURNS trigger AS $$
+BEGIN
+    IF NEW.updated_at IS NOT DISTINCT FROM OLD.updated_at THEN
+        NEW.updated_at := now();
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 -- ---------------------------------------------------------------------
 -- clinical_note: RF15 - Sensitive clinical notes per appointment
@@ -213,6 +235,10 @@ CREATE TABLE clinical_note (
 CREATE INDEX idx_clinical_note_appointment_id ON clinical_note (appointment_id);
 CREATE INDEX idx_clinical_note_clinic_id ON clinical_note (clinic_id);
 CREATE INDEX idx_clinical_note_professional_id ON clinical_note (professional_id);
+
+CREATE TRIGGER trg_clinical_note_updated_at
+BEFORE UPDATE ON clinical_note
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ---------------------------------------------------------------------
 -- outbox: Transactional outbox for domain events
