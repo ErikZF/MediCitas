@@ -18,18 +18,23 @@ caché: PostgreSQL lo decide en el `INSERT`, mediante una restricción de exclus
 Recepcionista A (T1)                          Recepcionista B (T2)
 --------------------                          --------------------
 BEGIN (READ COMMITTED)                        BEGIN (READ COMMITTED)
-advisory lock compartido del profesional      advisory lock compartido (no espera a T1)
-validaciones: ofrece el servicio, dentro      mismas validaciones: también pasan,
-del horario, sin bloqueos                     porque T1 todavía no confirmó nada
-INSERT cita 09:00-09:30                       INSERT cita 09:00-09:30
-  -> ocupa el espacio en el índice GiST         -> encuentra la tupla de T1 en el índice:
-                                                   espera a que T1 termine
-COMMIT -> 201                                 T1 confirmó -> conflicto -> 23P01
+advisory lock: profesional y luego paciente   advisory lock del profesional:
+                                                espera a T1
+validaciones: ofrece el servicio, dentro
+del horario, sin bloqueos
+INSERT cita 09:00-09:30
+COMMIT -> 201 (libera los locks)              obtiene los locks
+                                              mismas validaciones: también pasan
+                                                (ninguna mira otras citas)
+                                              INSERT cita 09:00-09:30
+                                                -> el EXCLUDE encuentra la fila
+                                                   confirmada de T1 -> 23P01
                                               ROLLBACK -> 409 slot_taken
 ```
 
-Las dos transacciones pasan todas las validaciones, porque cada una solo ve datos
-confirmados. Lo que protege el espacio no son las validaciones, sino la restricción de
+T2 pasa todas las validaciones: ninguna mira otras citas. Lo que protege el espacio no son
+las validaciones, ni tampoco el lock (solo pone en fila los dos inserts; ver
+[más abajo](#por-qué-las-reservas-también-se-esperan-entre-sí)). La protección es la restricción de
 [`database/appointments/init.sql`](../database/appointments/init.sql):
 
 ```sql
@@ -50,6 +55,26 @@ CONSTRAINT no_overlap_professional EXCLUDE USING gist (
   libera el tiempo en el mismo `COMMIT` (I7).
 - `@medicitas/db` traduce el `23P01` de esta restricción a **409 `slot_taken`**, y el de
   `no_overlap_patient` a **409 `patient_overlap`** (I2). El cliente nunca ve SQLSTATE.
+
+### Por qué las reservas también se esperan entre sí
+
+La restricción sola es correcta, pero la CI mostró su costo con mucha competencia. Cuando
+dos transacciones insertan filas solapadas en el mismo instante, cada una encuentra en el
+índice la fila *de la otra*, todavía sin confirmar, y la espera. Eso es un ciclo: PostgreSQL
+lo detecta después de `deadlock_timeout` (1 s) y aborta una con `40P01`, que `withTenantTx`
+reintenta. Con cincuenta reservas del mismo espacio los ciclos se encadenan, y el caso de
+cincuenta clientes de la prueba de carrera pasó los 60 segundos en GitHub Actions (cuatro
+núcleos), aunque pasaba en máquinas de dos núcleos. El log de PostgreSQL de una corrida
+local mostraba un `deadlock detected` cada pocas corridas.
+
+Por eso reservar y reprogramar toman un **advisory lock de transacción sobre el profesional
+y sobre el paciente** antes de insertar ([`db/locks.ts`](../services/appointments-service/db/locks.ts)).
+El segundo escritor espera el lock, luego encuentra la primera fila ya **confirmada**, y la
+restricción responde `23P01` al instante: sin deadlock y sin la espera de 1 segundo. Después
+del cambio, ocho corridas locales seguidas de las pruebas de carrera registraron cero
+deadlocks. El costo: las reservas del mismo profesional, o del mismo paciente, corren de una
+en una, cosa que igual tendrían que hacer para competir por el mismo espacio; las reservas de
+profesionales distintos siguen corriendo en paralelo.
 
 ## Nivel de aislamiento: READ COMMITTED
 
@@ -82,16 +107,16 @@ las dos seguirían viendo el espacio libre. Además, en PostgreSQL puede abortar
 | --- | --- | --- |
 | **I1** sin solapes por profesional | `no_overlap_professional` (EXCLUDE) | `init.sql` |
 | **I2** sin solapes por paciente en una clínica | `no_overlap_patient` (EXCLUDE) | `init.sql` |
-| **I3** dentro del horario, fuera de bloqueos | Validaciones dentro de la transacción más un **advisory lock de transacción** por profesional: compartido al reservar, exclusivo al cambiar la agenda | `db/locks.ts` |
+| **I3** dentro del horario, fuera de bloqueos | Validaciones dentro de la transacción más un **advisory lock de transacción** por profesional, que toman las reservas, las reprogramaciones y los cambios de agenda | `db/locks.ts` |
 | **I4** duración fijada por el servicio | El body no puede enviarla; `CHECK (ends_at = starts_at + duration_minutes)` | `slot-rules.ts`, `init.sql` |
 | **I7** cancelar libera el espacio al instante | Las restricciones solo cuentan `booked`; el cambio y la liberación son un solo `COMMIT` | `init.sql`, `lifecycle.service.ts` |
 | **RF13** solo transiciones válidas | `SELECT ... FOR UPDATE` sobre la cita, más un trigger que impide salir de un estado final | `lifecycle.service.ts`, `init.sql` |
 
 **Por qué I3 necesita un lock.** Una reserva revisa los bloqueos, y un bloqueo nuevo busca
 las reservas con las que se cruza. Sin coordinación, las dos cosas pueden correr al mismo
-tiempo: la reserva no ve el bloqueo, el bloqueo no ve la reserva, y ambas confirman. El lock
-impone un orden: muchas reservas corren en paralelo (compartido), pero un cambio de agenda
-las espera y ellas lo esperan a él (exclusivo). Quien llega segundo ve al primero: una
+tiempo: la reserva no ve el bloqueo, el bloqueo no ve la reserva, y ambas confirman. El lock del
+profesional impone un orden: una reserva y un cambio de agenda del mismo profesional nunca
+corren al mismo tiempo. Quien llega segundo ve al primero: una
 reserva que llega después recibe **422 `professional_unavailable`**, y un bloqueo que llega
 después devuelve la reserva en su lista de `conflicts` (RF6). Es un lock de transacción
 (`pg_advisory_xact_lock`): se libera en el `COMMIT` o el `ROLLBACK` y es seguro detrás de
@@ -111,8 +136,11 @@ horario está tomado, toda la transacción hace rollback y la reserva original q
   (base de 20 ms, máximo de 250 ms). PostgreSQL ya hizo rollback, así que volver a correrla
   es seguro. Si todos los intentos fallan: **409 `concurrency_conflict`**.
 - **Cómo se evitan los deadlocks.**
-  - Cada transacción toma como máximo un lock de agenda por profesional, y reprogramar hacia
-    otro profesional toma los dos en un **orden fijo** (ids ordenados).
+  - Cada transacción toma sus advisory locks en **un orden global**: los profesionales
+    ordenados por id y luego el paciente. Reprogramar hacia otro profesional toma los dos
+    profesionales así, de modo que dos escritores nunca pueden esperarse en ciclo.
+  - La carrera entre dos inserts solapados sin confirmar, que PostgreSQL solo puede romper
+    con un deadlock, no puede ocurrir: los locks ponen esos inserts en fila (ver arriba).
   - Las llamadas a otros servicios (catálogo, pacientes) ocurren **antes** de abrir la
     transacción, y las invalidaciones de Redis **después** del `COMMIT`. Un reintento nunca
     las repite, y ningún lock queda tomado mientras se espera a la red.
@@ -129,7 +157,7 @@ impide I8 (ver [cache.es.md](cache.es.md)).
 | Alternativa | Por qué no |
 | --- | --- |
 | **Revisar y después escribir** (`SELECT` de espacios libres y luego `INSERT`) | Las dos transacciones ven el espacio libre y las dos insertan. Es justo el error que busca la pregunta. |
-| **`SELECT ... FOR UPDATE` del profesional** | `appointments_db` no tiene fila del profesional (vive en `users_db`). Además serializaría todas las reservas de un profesional, y no protege I2, que cruza profesionales. |
+| **`SELECT ... FOR UPDATE` del profesional** | `appointments_db` no tiene fila del profesional (vive en `users_db`), y no cubriría I2, que cruza profesionales. Los advisory locks dan el mismo orden para ambos, sin necesitar una fila. |
 | **Un lock en Redis** | Redis no es la fuente de verdad. Un lock con TTL puede expirar mientras la transacción sigue corriendo, y una falla de Redis bloquearía o rompería las reservas. La garantía viviría fuera de la base que guarda los datos. |
 | **SERIALIZABLE** | Correcto, pero responde con un `40001` genérico, necesita reintentos y aborta transacciones que no chocaban. Ver arriba. |
 | **Un mutex en el servicio** | Solo funciona dentro de un proceso. Con dos réplicas no protege nada. |
@@ -139,7 +167,7 @@ impide I8 (ver [cache.es.md](cache.es.md)).
 | Prueba | Qué demuestra |
 | --- | --- |
 | [`tests/race/test.ts`](../services/appointments-service/tests/race/test.ts) | 2 recepcionistas, mismo espacio, **100 iteraciones**: siempre exactamente un 201 y un 409 `slot_taken`, y una sola fila. Luego **50** a la vez: un 201 y 49 409. El mismo paciente con dos profesionales: 409 `patient_overlap` (I2). Al final, ningún profesional tiene dos citas `booked` solapadas (I1). |
-| [`tests/race/block-vs-booking.test.ts`](../services/appointments-service/tests/race/block-vs-booking.test.ts) | Una reserva y un bloqueo para la misma hora, **60 iteraciones** (I3): o el bloqueo reporta la reserva como conflicto, o la reserva recibe 422. Si se quita el lock compartido de la reserva, falla en las primeras iteraciones. |
+| [`tests/race/block-vs-booking.test.ts`](../services/appointments-service/tests/race/block-vs-booking.test.ts) | Una reserva y un bloqueo para la misma hora, **60 iteraciones** (I3): o el bloqueo reporta la reserva como conflicto, o la reserva recibe 422. Si se quita el lock de la reserva, falla en las primeras iteraciones. |
 | [`tests/integration/lifecycle.test.ts`](../services/appointments-service/tests/integration/lifecycle.test.ts) | Cancelar libera el tiempo al instante (I7); dos recepcionistas que reprograman la misma cita reciben un 201 y un 409; una reprogramación fallida hace rollback; el trigger rechaza transiciones inválidas incluso sin el servicio (RF13). |
 | [`packages/db/tests`](../packages/db/tests) | READ COMMITTED se fija de forma explícita; reintentos de `40001`/`40P01`; nada del contexto de un tenant sobrevive a un commit o un rollback. |
 
@@ -157,6 +185,8 @@ npm test -w services/appointments-service
   reintenta, el reintento recibe 409 (`slot_taken` o `patient_overlap`: se cruza con su
   propia reserva). Nada se reserva dos veces, pero el cliente no puede saber que el primer
   intento funcionó.
+- **Las reservas de un profesional o de un paciente son en serie.** Es el precio de evitar los
+  deadlocks de arriba; solo limita qué tan rápido una misma agenda puede recibir reservas.
 - **Decide una sola base.** La garantía vale porque las dos reservas llegan al mismo
   PostgreSQL. Un sharding futuro por clínica la conserva, porque una reserva nunca cruza
   clínicas; escribir la agenda de una clínica desde dos regiones no la conservaría.
