@@ -41,6 +41,12 @@ export interface AgendaCache {
   dayChanged(clinicId: string, professionalId: string, dates: readonly string[]): Promise<void>;
   /** After COMMIT: a rule or a range changed (working hours, blocks). Never throws. */
   professionalChanged(clinicId: string, professionalId: string): Promise<void>;
+  /**
+   * For the outbox relay (card E14): the same invalidations, applied now and throwing when
+   * Redis fails, so the relay leaves the event pending and tries again.
+   */
+  applyDayChanged(clinicId: string, professionalId: string, dates: readonly string[]): Promise<void>;
+  applyProfessionalChanged(clinicId: string, professionalId: string): Promise<void>;
 }
 
 export interface CacheStats {
@@ -182,21 +188,37 @@ export class RedisAgendaCache implements AgendaCache {
 
   async dayChanged(clinicId: string, professionalId: string, dates: readonly string[]): Promise<void> {
     if (dates.length === 0) return;
+    await this.invalidate(this.bumpDays(clinicId, professionalId, dates));
+  }
+
+  async professionalChanged(clinicId: string, professionalId: string): Promise<void> {
+    await this.invalidate(this.bumpGeneration(clinicId, professionalId));
+  }
+
+  async applyDayChanged(clinicId: string, professionalId: string, dates: readonly string[]): Promise<void> {
+    if (dates.length > 0) await this.bumpDays(clinicId, professionalId, dates)();
+  }
+
+  async applyProfessionalChanged(clinicId: string, professionalId: string): Promise<void> {
+    await this.bumpGeneration(clinicId, professionalId)();
+  }
+
+  private bumpDays(clinicId: string, professionalId: string, dates: readonly string[]): Invalidation {
     const base = this.base(clinicId, professionalId);
-    await this.invalidate(async () => {
+    return async () => {
       const transaction = this.redis.multi();
       for (const date of new Set(dates)) {
         transaction.incr(`${base}:ver:${date}`).expire(`${base}:ver:${date}`, DAY_COUNTER_TTL_SECONDS);
       }
       unwrap(await transaction.exec());
-    });
+    };
   }
 
-  async professionalChanged(clinicId: string, professionalId: string): Promise<void> {
+  private bumpGeneration(clinicId: string, professionalId: string): Invalidation {
     const base = this.base(clinicId, professionalId);
-    await this.invalidate(async () => {
+    return async () => {
       await this.redis.incr(`${base}:gen`);
-    });
+    };
   }
 
   // The data already committed, so a failed invalidation cannot fail the request. Until it
