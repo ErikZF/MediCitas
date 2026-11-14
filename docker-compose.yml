@@ -120,6 +120,26 @@ services:
       - public_net
       - private_net
 
+  keycloak-seed:
+    image: node:22-alpine
+    container_name: keycloak_seed_MediCitas
+    command: ["node", "/seed/seed-users.mjs"]
+    environment:
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL}
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      REALM_NAME: ${REALM_NAME}
+      KEYCLOAK_TEST_PASSWORD: ${KEYCLOAK_TEST_PASSWORD}
+    volumes:
+      - ./keycloak/seed-users.json:/seed/seed-users.json:ro
+      - ./keycloak/seed-users.mjs:/seed/seed-users.mjs:ro
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    networks:
+      - private_net
+    restart: "no"
+
   redis:
     image: redis:alpine3.23
     container_name: Redis_MediCitas
