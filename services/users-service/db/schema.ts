@@ -3,7 +3,7 @@ import { boolean, pgTable, primaryKey, text, uuid, varchar } from 'drizzle-orm/p
 
 // Query mappings only. Schema, constraints and RLS remain in database/users/init.sql.
 export const appUser = pgTable('app_user', {
-  appUserId: uuid('app_user_id').primaryKey().default(sql`gen_uuid_v7()`),
+  appUserId: uuid('app_user_id').primaryKey().default(sql`uuidv7()`),
   keycloakSub: text('keycloak_sub').notNull(),
   clinicId: uuid('clinic_id'),
   roleCode: varchar('role_code', { length: 32 }).notNull(),
@@ -11,7 +11,7 @@ export const appUser = pgTable('app_user', {
 });
 
 export const professional = pgTable('professional', {
-  professionalId: uuid('professional_id').notNull().default(sql`gen_uuid_v7()`),
+  professionalId: uuid('professional_id').notNull().default(sql`uuidv7()`),
   clinicId: uuid('clinic_id').notNull(),
   appUserId: uuid('app_user_id').notNull(),
   fullName: varchar('full_name', { length: 128 }).notNull(),
