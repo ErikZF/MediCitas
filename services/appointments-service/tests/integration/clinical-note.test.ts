@@ -86,7 +86,7 @@ describe.skipIf(!url)('clinical note (RF15) and its audit events (RF18)', () => 
         resourceId: noteId,
         occurredAt: NOW.toISOString(),
       });
-      assert.equal(JSON.stringify(event.payload).includes('Dolor'), false, 'the event never carries the note itself');
+      assert.equal(JSON.stringify(event.payload).includes('Lower back pain'), false, 'the event never carries the note itself');
     }
   });
 
