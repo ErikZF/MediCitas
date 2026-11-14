@@ -10,6 +10,7 @@
 
 import { eq } from 'drizzle-orm';
 import { MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
+import { recordAgendaChange } from '../../db/agenda-outbox.ts';
 import { lockProfessionalAgenda } from '../../db/locks.ts';
 import { appointment } from '../../db/schema.ts';
 import { ForbiddenError, NotFoundError } from '../../domain/errors.ts';
@@ -100,6 +101,8 @@ export async function bookAppointment(deps: BookingDeps, ctx: TenantContext, inp
       statusChangedBy: ctx.userId,
       updatedAt: now,
     }).returning();
+    // Backstop for the invalidation below, in case the process dies before it (E14).
+    if (deps.cache) await recordAgendaChange(tx, ctx, input.professionalId, [slot.date]);
 
     return toAppointmentDto(row!);
   }, asApp);

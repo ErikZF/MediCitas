@@ -7,6 +7,7 @@
 
 import { and, asc, eq, gt, lt } from 'drizzle-orm';
 import { MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
+import { recordAgendaChange } from '../../db/agenda-outbox.ts';
 import { lockProfessionalAgenda } from '../../db/locks.ts';
 import { appointment, scheduleBlock, workingHours } from '../../db/schema.ts';
 import { ForbiddenError } from '../../domain/errors.ts';
@@ -105,6 +106,8 @@ export async function replaceWorkingHours(
 
   const saved = await withTenantTx(deps.db, ctx, async (tx) => {
     await lockProfessionalAgenda(tx, professionalId, 'exclusive');
+    // Every day of the professional may change (E14 backstop for the invalidation below).
+    if (deps.cache) await recordAgendaChange(tx, ctx, professionalId, null);
     await tx.delete(workingHours).where(eq(workingHours.professionalId, professionalId));
     if (hours.length === 0) {
       return [];
@@ -157,6 +160,7 @@ export async function addBlock(
 
   const added = await withTenantTx(deps.db, ctx, async (tx) => {
     await lockProfessionalAgenda(tx, professionalId, 'exclusive');
+    if (deps.cache) await recordAgendaChange(tx, ctx, professionalId, null);
 
     const [row] = await tx.insert(scheduleBlock)
       .values({ clinicId: ctx.clinicId as string, professionalId, startsAt, endsAt, reason: input.reason ?? null })

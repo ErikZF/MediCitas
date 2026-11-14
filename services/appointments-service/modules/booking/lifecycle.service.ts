@@ -14,6 +14,7 @@
 import { eq } from 'drizzle-orm';
 import { hasPermission, type Permission } from '@medicitas/auth';
 import { withTenantTx, type TenantContext, type Transaction } from '@medicitas/db';
+import { recordAgendaChange } from '../../db/agenda-outbox.ts';
 import { lockProfessionalAgenda } from '../../db/locks.ts';
 import { appointment } from '../../db/schema.ts';
 import { possibleLocalDates } from '../../cache/agenda-cache.ts';
@@ -115,6 +116,10 @@ export async function rescheduleAppointment(
       statusChangedBy: ctx.userId,
       updatedAt: now,
     }).returning();
+    if (deps.cache) {
+      await recordAgendaChange(tx, ctx, old.professionalId, [localDateOf(old.startsAt.getTime(), service.timeZone)]);
+      await recordAgendaChange(tx, ctx, slot.professionalId, [slot.date]);
+    }
 
     return toAppointmentDto(row!);
   }, asApp);
@@ -152,6 +157,8 @@ export async function cancelAppointment(
       })
       .where(eq(appointment.appointmentId, appointmentId))
       .returning();
+    // Only booked appointments hold time, so leaving booked frees it (E14 backstop).
+    if (deps.cache) await recordAgendaChange(tx, ctx, row.professionalId, possibleLocalDates(row.startsAt));
     return toAppointmentDto(updated!);
   }, asApp);
 
@@ -200,6 +207,8 @@ export async function recordOutcome(
       })
       .where(eq(appointment.appointmentId, appointmentId))
       .returning();
+    // Only booked appointments hold time, so leaving booked frees it (E14 backstop).
+    if (deps.cache) await recordAgendaChange(tx, ctx, row.professionalId, possibleLocalDates(row.startsAt));
     return toAppointmentDto(updated!);
   }, asApp);
 
