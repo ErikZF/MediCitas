@@ -145,6 +145,7 @@ docker compose up -d keycloak db_clinics db_users db_appointments db_logs
 - **Consola de administración**: `http://localhost:8080`
 - **Realm**: `Sistema_Clinico`
 - **Archivo de configuración del realm**: `keycloak/realm-export.json` (se importa solo al arrancar con `--import-realm`).
+- **Seed de usuarios demo**: `keycloak/seed-users.json` (se carga de forma idempotente con `keycloak/seed-users.mjs` y el servicio `keycloak-seed` mediante Partial Import).
 
 ### Variables de entorno requeridas (.env)
 ```ini

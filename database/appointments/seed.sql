@@ -1,7 +1,7 @@
 -- =====================================================================
 -- MediCitas - Appointments Database Seed Data
 -- Runs automatically after init.sql in /docker-entrypoint-initdb.d
--- IDs are aligned with clinics_db, users_db, and keycloak/realm-export.json.
+-- IDs are aligned with clinics_db, users_db, and keycloak/seed-users.json.
 -- =====================================================================
 
 -- Weekly working hours (Costa Rica local wall-clock times, weekday 0 = Sunday)

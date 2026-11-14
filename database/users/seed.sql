@@ -1,7 +1,7 @@
 -- =====================================================================
 -- MediCitas - Users Database Seed Data
 -- Runs automatically after init.sql in /docker-entrypoint-initdb.d
--- keycloak_sub, clinic_id, app_user_id and professional_id match keycloak/realm-export.json.
+-- clinic_id, app_user_id and professional_id match keycloak/seed-users.json.
 -- =====================================================================
 
 INSERT INTO app_user (app_user_id, keycloak_sub, clinic_id, role_code, is_active) VALUES
