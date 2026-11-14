@@ -7,7 +7,12 @@ import type { ProfessionalDeps } from './modules/professionals/professionals.ser
 import { createPatientsRouter } from './modules/patients/patients.routes.ts';
 import type { PatientsDeps } from './modules/patients/patients.service.ts';
 
+import { userManagement } from './modules/user-management/user-management.routes.ts';
+import type { Management } from './modules/user-management/user-management.service.ts';
+
 export interface AppDeps {
+  management?: Management;
+  clinicsUrl?: string;
   professionals?: ProfessionalDeps;
   patients?: PatientsDeps;
 }
@@ -16,6 +21,7 @@ export function createApp(deps: AppDeps = {}): Express {
   const app = express();
   app.use(express.json());
   app.use(routes);
+  if (deps.management) app.use('/users', requiereToken, requiereTenantContext, userManagement(deps.management,deps.clinicsUrl));
   if (deps.professionals !== undefined) {
     app.use('/professionals', requiereToken, requiereTenantContext, createProfessionalsRouter(deps.professionals));
   }
