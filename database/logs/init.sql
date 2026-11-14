@@ -70,6 +70,23 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION gen_uuid_v7() RETURNS uuid AS $$
+DECLARE
+    v_time_ms bigint;
+    v_bytes   bytea;
+BEGIN
+    v_time_ms := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
+    v_bytes := overlay(
+        uuid_send(gen_random_uuid())
+        PLACING substring(int8send(v_time_ms) FROM 3 FOR 6)
+        FROM 1 FOR 6
+    );
+    v_bytes := set_byte(v_bytes, 6, (get_byte(v_bytes, 6) & 15) | 112);  -- version 7
+    v_bytes := set_byte(v_bytes, 8, (get_byte(v_bytes, 8) & 63) | 128);  -- RFC 9562 variant
+    RETURN encode(v_bytes, 'hex')::uuid;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
 -- ---------------------------------------------------------------------
 -- audit_log: RF18, RF19 - append-only (I6)
 -- Records who, what, about which patient and when, for every read and
@@ -77,7 +94,7 @@ $$ LANGUAGE plpgsql;
 -- Protected by the engine: a trigger rejects UPDATE, DELETE and TRUNCATE.
 -- ---------------------------------------------------------------------
 CREATE TABLE audit_log (
-    audit_log_id UUID NOT NULL DEFAULT gen_random_uuid(),
+    audit_log_id UUID NOT NULL DEFAULT gen_uuid_v7(),
     clinic_id    UUID        NOT NULL,                       -- Logical reference to Clinics Service
     app_user_id  UUID        NOT NULL,                       -- Logical reference to Users Service
     patient_id   UUID        NOT NULL,                       -- Logical reference to Users Service

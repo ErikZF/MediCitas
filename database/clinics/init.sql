@@ -62,11 +62,28 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION gen_uuid_v7() RETURNS uuid AS $$
+DECLARE
+    v_time_ms bigint;
+    v_bytes   bytea;
+BEGIN
+    v_time_ms := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
+    v_bytes := overlay(
+        uuid_send(gen_random_uuid())
+        PLACING substring(int8send(v_time_ms) FROM 3 FOR 6)
+        FROM 1 FOR 6
+    );
+    v_bytes := set_byte(v_bytes, 6, (get_byte(v_bytes, 6) & 15) | 112);  -- version 7
+    v_bytes := set_byte(v_bytes, 8, (get_byte(v_bytes, 8) & 63) | 128);  -- RFC 9562 variant
+    RETURN encode(v_bytes, 'hex')::uuid;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
 -- --------------------------------------------------------------------
 -- clinic
 -- --------------------------------------------------------------------
 CREATE TABLE clinic (
-    clinic_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    clinic_id  UUID PRIMARY KEY DEFAULT gen_uuid_v7(),
     identifier VARCHAR(32)  NOT NULL UNIQUE,
     name       VARCHAR(128) NOT NULL,
     time_zone  TEXT         NOT NULL,
@@ -77,7 +94,7 @@ CREATE TABLE clinic (
 -- specialty: global catalog shared by every clinic
 -- --------------------------------------------------------------------
 CREATE TABLE specialty (
-    specialty_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    specialty_id UUID PRIMARY KEY DEFAULT gen_uuid_v7(),
     name         VARCHAR(128) NOT NULL UNIQUE
 );
 
@@ -85,7 +102,7 @@ CREATE TABLE specialty (
 -- service: clinic catalog
 -- --------------------------------------------------------------------
 CREATE TABLE service (
-    service_id       UUID NOT NULL DEFAULT gen_random_uuid(),
+    service_id       UUID NOT NULL DEFAULT gen_uuid_v7(),
     clinic_id        UUID NOT NULL REFERENCES clinic (clinic_id),
     specialty_id     UUID NOT NULL REFERENCES specialty (specialty_id),
     name             VARCHAR(128) NOT NULL,

@@ -70,6 +70,23 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION gen_uuid_v7() RETURNS uuid AS $$
+DECLARE
+    v_time_ms bigint;
+    v_bytes   bytea;
+BEGIN
+    v_time_ms := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
+    v_bytes := overlay(
+        uuid_send(gen_random_uuid())
+        PLACING substring(int8send(v_time_ms) FROM 3 FOR 6)
+        FROM 1 FOR 6
+    );
+    v_bytes := set_byte(v_bytes, 6, (get_byte(v_bytes, 6) & 15) | 112);  -- version 7
+    v_bytes := set_byte(v_bytes, 8, (get_byte(v_bytes, 8) & 63) | 128);  -- RFC 9562 variant
+    RETURN encode(v_bytes, 'hex')::uuid;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
 -- ---------------------------------------------------------------------
 -- role: system roles
 -- ---------------------------------------------------------------------
@@ -90,7 +107,7 @@ INSERT INTO role (role_code, description) VALUES
 -- clinic_id is a logical reference to the Clinics microservice.
 -- ---------------------------------------------------------------------
 CREATE TABLE app_user (
-    app_user_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    app_user_id  UUID PRIMARY KEY DEFAULT gen_uuid_v7(),
     keycloak_sub TEXT        NOT NULL UNIQUE,                  -- "sub" claim of the token
     clinic_id    UUID,                                         -- Logical reference to Clinics Service (NULL only for platform_admin)
     role_code    VARCHAR(32) NOT NULL REFERENCES role (role_code),
@@ -104,7 +121,7 @@ CREATE INDEX idx_app_user_clinic_id ON app_user (clinic_id);
 -- professional: healthcare professionals linked to app_user
 -- ---------------------------------------------------------------------
 CREATE TABLE professional (
-    professional_id UUID NOT NULL DEFAULT gen_random_uuid(),
+    professional_id UUID NOT NULL DEFAULT gen_uuid_v7(),
     clinic_id       UUID         NOT NULL,                     -- Logical reference to Clinics Service
     app_user_id     UUID         NOT NULL REFERENCES app_user (app_user_id),
     full_name       VARCHAR(128) NOT NULL,
@@ -137,7 +154,7 @@ CREATE INDEX idx_professional_specialty_clinic_id ON professional_specialty (cli
 -- clinic_id is a logical reference to Clinics Service
 -- ---------------------------------------------------------------------
 CREATE TABLE patient (
-    patient_id     UUID NOT NULL DEFAULT gen_random_uuid(),
+    patient_id     UUID NOT NULL DEFAULT gen_uuid_v7(),
     clinic_id      UUID         NOT NULL,                      -- Logical reference to Clinics Service
     identification VARCHAR(32)  NOT NULL,                      -- national id / passport
     full_name      VARCHAR(128) NOT NULL,
@@ -343,7 +360,7 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO db_admin, db_receptionist, db
 -- N10 owns relay delivery and its separate consumer permissions.
 
 CREATE TABLE public.outbox (
-    event_id UUID NOT NULL DEFAULT gen_random_uuid(),
+    event_id UUID NOT NULL DEFAULT gen_uuid_v7(),
     clinic_id UUID NOT NULL,
     aggregate_id UUID NOT NULL,
     event_type VARCHAR(64) NOT NULL,

@@ -76,13 +76,30 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION gen_uuid_v7() RETURNS uuid AS $$
+DECLARE
+    v_time_ms bigint;
+    v_bytes   bytea;
+BEGIN
+    v_time_ms := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
+    v_bytes := overlay(
+        uuid_send(gen_random_uuid())
+        PLACING substring(int8send(v_time_ms) FROM 3 FOR 6)
+        FROM 1 FOR 6
+    );
+    v_bytes := set_byte(v_bytes, 6, (get_byte(v_bytes, 6) & 15) | 112);  -- version 7
+    v_bytes := set_byte(v_bytes, 8, (get_byte(v_bytes, 8) & 63) | 128);  -- RFC 9562 variant
+    RETURN encode(v_bytes, 'hex')::uuid;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
 -- ---------------------------------------------------------------------
 -- working_hours: weekly schedule of a professional
 -- professional_id is a logical reference to Users Service
 -- clinic_id is a logical reference to Clinics Service
 -- ---------------------------------------------------------------------
 CREATE TABLE working_hours (
-    working_hours_id UUID NOT NULL DEFAULT gen_random_uuid(),
+    working_hours_id UUID NOT NULL DEFAULT gen_uuid_v7(),
     clinic_id        UUID     NOT NULL,                        -- Logical reference to Clinics Service
     professional_id  UUID     NOT NULL,                        -- Logical reference to Users Service
     weekday          SMALLINT NOT NULL CHECK (weekday BETWEEN 0 AND 6),   -- 0 = Sunday
@@ -107,7 +124,7 @@ CREATE INDEX idx_working_hours_professional_id ON working_hours (professional_id
 -- clinic_id is a logical reference to Clinics Service
 -- ---------------------------------------------------------------------
 CREATE TABLE schedule_block (
-    schedule_block_id UUID NOT NULL DEFAULT gen_random_uuid(),
+    schedule_block_id UUID NOT NULL DEFAULT gen_uuid_v7(),
     clinic_id         UUID        NOT NULL,                    -- Logical reference to Clinics Service
     professional_id   UUID        NOT NULL,                    -- Logical reference to Users Service
     starts_at         TIMESTAMPTZ NOT NULL,
@@ -145,7 +162,7 @@ CREATE INDEX idx_prof_service_clinic_id ON professional_service (clinic_id);
 -- created_by / cancelled_by (Users Service)
 -- ---------------------------------------------------------------------
 CREATE TABLE appointment (
-    appointment_id      UUID NOT NULL DEFAULT gen_random_uuid(),
+    appointment_id      UUID NOT NULL DEFAULT gen_uuid_v7(),
     clinic_id           UUID        NOT NULL,                  -- Logical reference to Clinics Service
     professional_id     UUID        NOT NULL,                  -- Logical reference to Users Service
     patient_id          UUID        NOT NULL,                  -- Logical reference to Users Service
@@ -230,7 +247,7 @@ $$ LANGUAGE plpgsql;
 -- clinical_note: RF15 - Sensitive clinical notes per appointment
 -- ---------------------------------------------------------------------
 CREATE TABLE clinical_note (
-    clinical_note_id   UUID NOT NULL DEFAULT gen_random_uuid(),
+    clinical_note_id   UUID NOT NULL DEFAULT gen_uuid_v7(),
     appointment_id     UUID        NOT NULL,
     clinic_id          UUID        NOT NULL,                  -- Logical reference to Clinics Service
     professional_id    UUID        NOT NULL,                  -- Logical reference to Users Service
@@ -257,7 +274,7 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 -- outbox: Transactional outbox for domain events
 -- ---------------------------------------------------------------------
 CREATE TABLE outbox (
-    event_id      UUID NOT NULL DEFAULT gen_random_uuid(),
+    event_id      UUID NOT NULL DEFAULT gen_uuid_v7(),
     clinic_id     UUID        NOT NULL,
     aggregate_id  UUID        NOT NULL,   -- appointment_id or professional_id
     event_type    VARCHAR(64) NOT NULL,   -- AgendaChanged, AppointmentBooked...
