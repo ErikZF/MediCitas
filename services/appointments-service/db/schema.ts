@@ -8,7 +8,7 @@ import { integer, jsonb, pgTable, primaryKey, smallint, text, time, timestamp, u
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
 export const workingHours = pgTable('working_hours', {
-  workingHoursId: uuid('working_hours_id').notNull().defaultRandom(),
+  workingHoursId: uuid('working_hours_id').notNull().default(sql`gen_uuid_v7()`),
   clinicId: uuid('clinic_id').notNull(),
   professionalId: uuid('professional_id').notNull(),
   weekday: smallint('weekday').notNull(),
@@ -17,7 +17,7 @@ export const workingHours = pgTable('working_hours', {
 }, (table) => [primaryKey({ columns: [table.clinicId, table.workingHoursId] })]);
 
 export const scheduleBlock = pgTable('schedule_block', {
-  scheduleBlockId: uuid('schedule_block_id').notNull().defaultRandom(),
+  scheduleBlockId: uuid('schedule_block_id').notNull().default(sql`gen_uuid_v7()`),
   clinicId: uuid('clinic_id').notNull(),
   professionalId: uuid('professional_id').notNull(),
   startsAt: timestamptz('starts_at').notNull(),
@@ -33,7 +33,7 @@ export const professionalService = pgTable('professional_service', {
 }, (table) => [primaryKey({ columns: [table.clinicId, table.professionalId, table.serviceId] })]);
 
 export const appointment = pgTable('appointment', {
-  appointmentId: uuid('appointment_id').notNull().defaultRandom(),
+  appointmentId: uuid('appointment_id').notNull().default(sql`gen_uuid_v7()`),
   clinicId: uuid('clinic_id').notNull(),
   professionalId: uuid('professional_id').notNull(),
   patientId: uuid('patient_id').notNull(),
@@ -53,7 +53,7 @@ export const appointment = pgTable('appointment', {
 }, (table) => [primaryKey({ columns: [table.clinicId, table.appointmentId] })]);
 
 export const clinicalNote = pgTable('clinical_note', {
-  clinicalNoteId: uuid('clinical_note_id').notNull().defaultRandom(),
+  clinicalNoteId: uuid('clinical_note_id').notNull().default(sql`gen_uuid_v7()`),
   appointmentId: uuid('appointment_id').notNull(),
   clinicId: uuid('clinic_id').notNull(),
   professionalId: uuid('professional_id').notNull(),
@@ -63,7 +63,7 @@ export const clinicalNote = pgTable('clinical_note', {
 }, (table) => [primaryKey({ columns: [table.clinicId, table.clinicalNoteId] })]);
 
 export const outbox = pgTable('outbox', {
-  eventId: uuid('event_id').notNull().defaultRandom(),
+  eventId: uuid('event_id').notNull().default(sql`gen_uuid_v7()`),
   clinicId: uuid('clinic_id').notNull(),
   aggregateId: uuid('aggregate_id').notNull(),
   eventType: varchar('event_type', { length: 64 }).notNull(),

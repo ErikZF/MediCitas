@@ -39,7 +39,7 @@ test.skipIf(!url)('normal startup verifies Bearer, builds context and reads only
     await database.pool.query(`INSERT INTO audit_log
       (audit_log_id, clinic_id, app_user_id, patient_id, action, resource, resource_id, occurred_at)
       VALUES ($1, $2, $3, $4, 'read', 'patient_contact', $4, '2027-01-04T06:00:00Z'),
-             (gen_random_uuid(), $5, $3, $4, 'read', 'patient_contact', $4, '2027-01-04T06:00:00Z')`,
+             (gen_uuid_v7(), $5, $3, $4, 'read', 'patient_contact', $4, '2027-01-04T06:00:00Z')`,
     [event, clinic, user, patient, otherClinic]);
 
     jwks.listen(0, '127.0.0.1');
