@@ -43,8 +43,9 @@ async function listen(server: Server): Promise<string> {
 /** clinics-service and users-service as far as appointments-service sees them. */
 function answer(req: IncomingMessage): [number, unknown] {
   const [, resource, id] = (req.url ?? '').split('/');
-  if (resource === 'services' && id === ACTIVE) return [200, { serviceId: ACTIVE, durationMinutes: 30, isActive: true, timeZone: 'UTC' }];
-  if (resource === 'services' && id === RETIRED) return [200, { serviceId: RETIRED, durationMinutes: 30, isActive: false, timeZone: 'UTC' }];
+  if (resource === 'services' && (id === ACTIVE || id === RETIRED)) {
+    return [200, { serviceId: id, specialtyId: '00000000-0000-4000-8000-000000000002', durationMinutes: 30, isActive: id === ACTIVE, timeZone: 'UTC' }];
+  }
   if (resource === 'services' && id === FORBIDDEN) return [403, { error: 'Request rejected.' }];
   if (resource === 'professionals' && id === PROF) return [200, { professionalId: PROF }];
   return [404, { error: 'Request rejected.' }];

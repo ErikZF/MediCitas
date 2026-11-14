@@ -182,7 +182,8 @@ export async function getProfessionalAvailability(
 
   const windows = await resolveWindows(deps, ctx, [professionalId], days, service.timeZone, async (tx) => {
     const offered = await tx.select({ professionalId: professionalService.professionalId }).from(professionalService)
-      .where(and(eq(professionalService.professionalId, professionalId), eq(professionalService.serviceId, query.serviceId)))
+      .where(and(eq(professionalService.professionalId, professionalId), eq(professionalService.serviceId, query.serviceId),
+        eq(professionalService.specialtyId, service.specialtyId)))
       .limit(1);
     if (offered.length === 0) {
       throw new ValidationError('The professional does not offer this service.', 'service_not_offered');
@@ -212,7 +213,7 @@ export async function getServiceAvailability(
 
   const offering = await withTenantTx(deps.db, ctx, (tx) => tx.select({ professionalId: professionalService.professionalId })
     .from(professionalService)
-    .where(eq(professionalService.serviceId, query.serviceId)), asApp);
+    .where(and(eq(professionalService.serviceId, query.serviceId), eq(professionalService.specialtyId, service.specialtyId))), asApp);
   const windows = offering.length === 0
     ? new Map() as FreeWindowsByDay
     : await resolveWindows(deps, ctx, offering.map((row) => row.professionalId), days, service.timeZone);

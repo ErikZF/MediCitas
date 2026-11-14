@@ -5,7 +5,7 @@ import pg from 'pg';
 import type { Database } from '@medicitas/db';
 
 /** Real owner schemas in the existing TEST_DATABASE_URL instance, never shared DBs. */
-export async function createTestDatabase(adminUrl: string, owner: 'users' | 'clinics') {
+export async function createTestDatabase(adminUrl: string, owner: 'users' | 'clinics' | 'appointments') {
   const name = `medicitas_rf4_${owner}_${process.pid}_${randomUUID().slice(0, 8)}`;
   const login = `${name}_app`;
   const admin = new pg.Pool({ connectionString: adminUrl, max: 1 });

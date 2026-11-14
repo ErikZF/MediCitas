@@ -1,6 +1,7 @@
 const statuses = {
   forbidden: 403,
   not_found: 404,
+  duplicate: 409,
   invalid_request: 422,
   invalid_professional_user: 422,
   invalid_reference: 422,
