@@ -2,7 +2,7 @@
 
 [English](database.md) · **Español**
 
-En MediCitas, la persistencia está repartida en 4 bases relacionales independientes (PostgreSQL 17), diseñadas para una arquitectura de microservicios que aplica el patrón **una base por servicio** (*Database-per-Service*).
+En MediCitas, la persistencia está repartida en 4 bases relacionales independientes (PostgreSQL 18), diseñadas para una arquitectura de microservicios que aplica el patrón **una base por servicio** (*Database-per-Service*).
 
 ---
 
@@ -115,7 +115,7 @@ flowchart TD
 ## 3. Integridad referencial entre microservicios
 
 En una arquitectura de microservicios con bases aisladas:
-1. **Sin llaves foráneas entre bases:** las restricciones de llave foránea entre bases de distintos servicios se reemplazan por referencias lógicas (`UUID`). Los identificadores generados usan **UUID v7** (RFC 9562) mediante `gen_uuid_v7()` para mantener localidad temporal en índices B-tree.
+1. **Sin llaves foráneas entre bases:** las restricciones de llave foránea entre bases de distintos servicios se reemplazan por referencias lógicas (`UUID`). Los identificadores generados usan **UUID v7** (RFC 9562) mediante `uuidv7()` nativo para mantener localidad temporal en índices B-tree.
 2. **Índices sobre las llaves lógicas:** cada columna que referencia a otro servicio (por ejemplo `clinic_id`, `professional_id`, `patient_id`) tiene su propio índice B-tree para optimizar los planes de ejecución y el filtrado por tenant.
 3. **Llaves compuestas listas para sharding:** las tablas por clínica incluyen `clinic_id` en sus llaves primarias, llaves foráneas intra-base, restricciones únicas y restricciones `EXCLUDE USING gist` para permitir particionamiento o sharding horizontal por `clinic_id`.
 4. **Validación de la integridad:** la consistencia de negocio entre servicios se impone en la capa de aplicación, mediante verificaciones transaccionales o mensajería asíncrona.
@@ -124,7 +124,7 @@ En una arquitectura de microservicios con bases aisladas:
 
 ## 4. Row-Level Security (RLS) y multi-tenancy
 
-Para imponer un aislamiento estricto entre clínicas (**invariante I5**) y un control de acceso por rol con el menor privilegio (**RF15**, **RF17**, **RF18**, **RF19**), MediCitas implementa **Row-Level Security (RLS)** de forma nativa en PostgreSQL 17.
+Para imponer un aislamiento estricto entre clínicas (**invariante I5**) y un control de acceso por rol con el menor privilegio (**RF15**, **RF17**, **RF18**, **RF19**), MediCitas implementa **Row-Level Security (RLS)** de forma nativa en PostgreSQL 18.
 
 ### Comparación de estrategias de multi-tenancy
 

@@ -7,14 +7,14 @@ x-service-healthcheck: &service-healthcheck
 
 services:
   db_clinics:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     container_name: postgre_clinics_MediCitas
     environment:
       POSTGRES_USER: ${DB_CLINICS_USER}
       POSTGRES_PASSWORD: ${DB_CLINICS_PASSWORD}
       POSTGRES_DB: ${DB_CLINICS_NAME}
     volumes:
-      - pgdata_clinics:/var/lib/postgresql/data
+      - pgdata_clinics:/var/lib/postgresql
       - ./database/clinics:/docker-entrypoint-initdb.d:ro
     ports:
       - "${DB_CLINICS_PORT}:${POSTGRE_INTERNAL_PORT}"
@@ -28,14 +28,14 @@ services:
       start_period: 30s
 
   db_users:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     container_name: postgre_users_MediCitas
     environment:
       POSTGRES_USER: ${DB_USERS_USER}
       POSTGRES_PASSWORD: ${DB_USERS_PASSWORD}
       POSTGRES_DB: ${DB_USERS_NAME}
     volumes:
-      - pgdata_users:/var/lib/postgresql/data
+      - pgdata_users:/var/lib/postgresql
       - ./database/users:/docker-entrypoint-initdb.d:ro
     ports:
       - "${DB_USERS_PORT}:${POSTGRE_INTERNAL_PORT}"
@@ -49,14 +49,14 @@ services:
       start_period: 30s
 
   db_appointments:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     container_name: postgre_appointments_MediCitas
     environment:
       POSTGRES_USER: ${DB_APPOINTMENTS_USER}
       POSTGRES_PASSWORD: ${DB_APPOINTMENTS_PASSWORD}
       POSTGRES_DB: ${DB_APPOINTMENTS_NAME}
     volumes:
-      - pgdata_appointments:/var/lib/postgresql/data
+      - pgdata_appointments:/var/lib/postgresql
       - ./database/appointments:/docker-entrypoint-initdb.d:ro
     ports:
       - "${DB_APPOINTMENTS_PORT}:${POSTGRE_INTERNAL_PORT}"
@@ -70,14 +70,14 @@ services:
       start_period: 30s
 
   db_logs:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     container_name: postgre_logs_MediCitas
     environment:
       POSTGRES_USER: ${DB_LOGS_USER}
       POSTGRES_PASSWORD: ${DB_LOGS_PASSWORD}
       POSTGRES_DB: ${DB_LOGS_NAME}
     volumes:
-      - pgdata_logs:/var/lib/postgresql/data
+      - pgdata_logs:/var/lib/postgresql
       - ./database/logs:/docker-entrypoint-initdb.d:ro
     ports:
       - "${DB_LOGS_PORT}:${POSTGRE_INTERNAL_PORT}"

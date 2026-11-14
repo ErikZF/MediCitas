@@ -2,7 +2,7 @@
 
 **English** · [Español](database.es.md)
 
-In MediCitas, persistence is partitioned across 4 independent relational databases (PostgreSQL 17), designed for a microservices architecture implementing the **Database-per-Service** pattern.
+In MediCitas, persistence is partitioned across 4 independent relational databases (PostgreSQL 18), designed for a microservices architecture implementing the **Database-per-Service** pattern.
 
 ---
 
@@ -115,7 +115,7 @@ flowchart TD
 ## 3. Referential Integrity in Microservices
 
 In a microservices architecture with isolated databases:
-1. **No Cross-Database Foreign Keys:** Foreign key constraints across different service databases are replaced with logical references (`UUID`). Entity identifiers default to RFC 9562 **UUID v7** via `gen_uuid_v7()` for time-ordered B-tree locality.
+1. **No Cross-Database Foreign Keys:** Foreign key constraints across different service databases are replaced with logical references (`UUID`). Entity identifiers default to RFC 9562 **UUID v7** via native `uuidv7()` for time-ordered B-tree locality.
 2. **Logical Foreign Key Indexes:** Each cross-reference column (e.g., `clinic_id`, `professional_id`, `patient_id`) has a dedicated B-tree index to optimize query execution plans and tenant filtering.
 3. **Shard-Ready Composite Keys:** Tenant-scoped tables include `clinic_id` in their primary keys, composite intra-database foreign keys, unique constraints, and `EXCLUDE USING gist` constraints so PostgreSQL can partition or horizontally shard by `clinic_id`.
 4. **Integrity Validation:** Cross-service business consistency is enforced in the application layer and through transactional checks or asynchronous messaging.
@@ -124,7 +124,7 @@ In a microservices architecture with isolated databases:
 
 ## 4. Row-Level Security (RLS) & Multi-Tenancy
 
-To enforce strict clinic isolation (**Invariant I5**) and least-privilege role-based access control (**RF15**, **RF17**, **RF18**, **RF19**), MediCitas implements **Row-Level Security (RLS)** natively within PostgreSQL 17.
+To enforce strict clinic isolation (**Invariant I5**) and least-privilege role-based access control (**RF15**, **RF17**, **RF18**, **RF19**), MediCitas implements **Row-Level Security (RLS)** natively within PostgreSQL 18.
 
 ### Multi-Tenancy Strategy Comparison
 

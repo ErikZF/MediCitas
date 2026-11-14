@@ -21,7 +21,7 @@ flowchart TD
         UnitTest["Job: Unit Tests\n(npm test)"]
         
         subgraph PostgresService["Contenedor de Servicio PostgreSQL"]
-            PG["postgres:17-alpine\n(healthcheck activo)"]
+            PG["postgres:18-alpine\n(healthcheck activo)"]
         end
         
         IntegTest["Job: DB Integration & Concurrency\n(TEST_DATABASE_URL)\n- Verificación de políticas RLS\n- Ciclo de vida y disponibilidad de citas\n- Concurrencia y carreras críticas (I1, I2, I5)"]
@@ -60,7 +60,7 @@ El archivo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) se ejecuta 
    - Ejecuta las pruebas unitarias rápidas de todos los paquetes y microservicios (`npm test`).
 
 3. **`integration-tests` (Pruebas de base de datos y concurrencia)**:
-   - Levanta un contenedor de servicio de **PostgreSQL 17** (`postgres:17-alpine`).
+   - Levanta un contenedor de servicio de **PostgreSQL 18** (`postgres:18-alpine`).
    - Inyecta `TEST_DATABASE_URL: postgres://test:test_password@localhost:5432/postgres`.
    - Levanta también **Redis 7** (`redis:7-alpine`) e inyecta `TEST_REDIS_URL: redis://localhost:6379` para las pruebas de la caché de disponibilidad (E8, I8). Sin esa variable, esas pruebas se saltan.
    - Los tests crean dinámicamente una base de datos desechable (`medicitas_<label>_<pid>`), aplican el esquema real [`database/appointments/init.sql`](../database/appointments/init.sql) con extensiones (`btree_gist`), restricciones de exclusión y políticas RLS.
