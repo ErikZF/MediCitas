@@ -8,8 +8,7 @@ Las rutas de dominio usan HTTP/JSON y se agrupan por responsabilidad: appointmen
 contiene horarios, reservas y consultas de citas; audit lee la base de bitácora,
 que está separada. La reserva obtiene datos del catálogo y del paciente mediante
 dependencias inyectadas antes de su transacción, de modo que las consultas externas
-quedan fuera de ella. Algunos de los endpoints que esos adaptadores llaman todavía
-están pendientes (ver más abajo).
+quedan fuera de ella. Las consultas de catálogo, profesional y paciente ya existen.
 
 La identidad se delega en Keycloak, así que la API de dominio no maneja inicio de
 sesión ni credenciales. Donde la verificación del Bearer está conectada, el servicio
@@ -28,25 +27,21 @@ raíz y health, y no reenvía peticiones.
 
 ## Disponibilidad real de las rutas
 
-Las rutas de abajo son relativas a su **servicio dueño**. Todavía no hay prefijo
-público ni proxy del gateway hacia ellas. Una ruta implementada y probada mediante
-`createApp(deps)` no necesariamente queda expuesta con `npm run dev`.
+Las rutas de abajo son relativas a su **servicio dueño**. Todas las funciones de
+esta tabla se conectan en su `server.ts` normal; las pruebas también pueden inyectar
+dependencias mediante `createApp(deps)`.
 
-| Servicio / funcionalidad | Implementada | Dependencias para montarla en `createApp` | Activa al arrancar `server.ts` | Compose / gateway |
-| --- | --- | --- | --- | --- |
-| Los cinco servicios: `GET /health`; gateway: `GET /` | Sí | Ninguna para montar health | Sí, si el servicio arranca bien | Compose no tiene servicios HTTP; el gateway solo sirve sus dos rutas |
-| clinics: catálogo de servicios (RF3) | Sí | `serviceCatalog: { db }` | Sí: base de clinics y Bearer verificado | Sin ruta de punta a punta |
-| clinics: especialidades (datos de referencia de RF4) | Sí | `serviceCatalog: { db }` | Sí: misma base de clinics y verificación del Bearer | Sin ruta de punta a punta |
-| users: registro y consulta de profesionales (RF4) | Sí | `professionals: { db, specialties, syncProfessionalId }` | Sí: base de users, clinics y Admin API de Keycloak | Servicio directo |
-| appointments: servicios por profesional (RF4) | Sí | `associations: { db, catalog, directory }` | Sí: base de appointments, clinics y users | Servicio directo |
-| appointments: horarios y bloqueos (RF5-RF6) | Sí | `schedule: { db, directory }` | Sí: base de appointments, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` y Bearer verificado | Sin ruta de punta a punta |
-| appointments: disponibilidad (RF7-RF8) | Sí | `availability: { db, catalog, directory }` | Sí: base de appointments, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` y Bearer verificado; caché de Redis si hay `REDIS_URL` | Sin ruta de punta a punta |
-| appointments: reserva, consulta y ciclo de vida (RF9-RF13) | Sí | `booking: { db, catalog, patients }` | Sí: base de appointments, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` y Bearer verificado | Sin ruta de punta a punta |
-| appointments: historial del paciente (RF16) | Sí | `patientHistory: { db }` | Sí: base de appointments y Bearer verificado | Sin ruta de punta a punta |
-| appointments: nota clínica (RF15) y sus eventos de auditoría (productor de RF18) | Sí | `clinicalNotes: { db }` | Sí: base de appointments y Bearer verificado | Sin ruta de punta a punta |
-| appointments: agenda del día (RF20) | Sí | `dailyAgenda: { db, clinics }` | Sí: base de appointments, `CLINICS_SERVICE_URL` y Bearer verificado | Sin ruta de punta a punta |
-| appointments: conteos (RF21) | Sí | `appointmentCounts: { db }` | Sí: mismo arranque de appointments y Bearer verificado | Sin ruta de punta a punta |
-| audit: consulta de la bitácora (RF19) | Sí | `auditQuery: { db }` | Sí: crea una conexión a la base de logs y exige Bearer | Sin ruta de punta a punta |
+| Servicio | Rutas activas al arrancar normalmente | Dependencias | Acceso desde el host con Compose por defecto |
+| --- | --- | --- | --- |
+| edge-gateway | Solo `GET /`, `GET /health` | Configuración HTTP | `API_PORT` (3000 por defecto); sin proxy de dominio |
+| clinics-service | `/health`, RF1 `/clinics`, RF3 `/services`, RF4 `/specialties`, `/clinic/time-zone` | Base clinics, Keycloak; users para RF1 | Solo red privada |
+| users-service | `/health`, RF2 `/users`, RF4 `/professionals`, RF14 `/patients` | Base users, Admin API de Keycloak, clinics | Solo red privada |
+| appointments-service | `/health`, asociaciones RF4, RF5-RF13, RF15-RF16, RF20-RF21 de abajo | Base appointments, clinics, users, Keycloak; caché/relay de agenda Redis opcionales | Solo red privada |
+| audit-service | `/health`, RF19 `/audit/logs` | Base logs, Keycloak | Solo red privada |
+
+Compose ya arranca los cinco servicios HTTP, cuatro bases PostgreSQL 18, Keycloak,
+su carga de usuarios y Redis. Para acceso directo desde el host use el override de
+puertos local del [README](../README.es.md#arranque-local); no envíe dominio al gateway.
 
 **Dependencias de appointments-service.** Reservas, disponibilidad y horarios llaman
 a otros servicios con el Bearer de quien llama, antes de abrir cualquier transacción:
@@ -55,14 +50,14 @@ a otros servicios con el Bearer de quien llama, antes de abrir cualquier transac
 | --- | --- | --- |
 | clinics `GET /services/:serviceId` | Especialidad, duración, zona horaria e `isActive` | Los tres roles de clínica |
 | users `GET /professionals/:professionalId` | Profesional activo de la clínica | 200 `{ professionalId }`; el administrador recibe también `specialtyIds` |
-| users `GET /patients/:patientId` | Que el paciente pertenezca a la clínica; solo se lee `patientId` | Todavía no implementado (RF14) |
+| users `GET /patients/:patientId` | Que el paciente pertenezca a la clínica; solo se lee `patientId` | Implementado (RF14): 200 `{ patientId }` |
 
 Un 404 de esos servicios se responde como 404. Cualquier otra falla (403, 5xx,
 timeout, cuerpo inutilizable) se responde como 503 `dependency_unavailable`.
 
 ## Identidad, permisos y formatos compartidos
 
-- RF3 y las rutas de RF4 de abajo verifican el Bearer y derivan de él el contexto del tenant.
+- Las rutas de dominio de clinics y users verifican Bearer y derivan de él el contexto.
 - Todas las rutas de appointments-service y RF19 verifican `Authorization: Bearer <access_token>`
   cuando se montan sin un `resolveContext` que lo reemplace, cosa que solo hacen las pruebas.
   MediCitas no tiene endpoint de inicio de sesión. `x-test-context` es solo para pruebas.
@@ -72,10 +67,10 @@ timeout, cuerpo inutilizable) se responde como 503 `dependency_unavailable`.
   UUID (o `user_id`), un rol de dominio y un `clinic_id` UUID para los roles de clínica;
   los profesionales además necesitan un `professional_id` UUID. El rol es el claim
   `role` válido o el primer rol reconocido en `realm_access.roles`. `platform_admin`
-  no tiene clínica y no puede usar las operaciones de dominio de abajo.
+  no tiene clínica y solo puede dar de alta clínicas y usar su bootstrap interno.
 - Los bodies JSON usan `Content-Type: application/json`. Los GET documentados no
   llevan body. Los identificadores de ruta son UUID; un ID de ruta mal formado
-  devuelve **404**, no 422. Los UUID en bodies y queries se validan con 422.
+  devuelve **404**, no 422 (el bootstrap interno usa 422). Los UUID en bodies y queries se validan con 422.
 - Los instantes de entrada usan ISO 8601 con `Z` o un desfase explícito, por ejemplo
   `2027-01-04T09:00:00-06:00`; los de salida usan UTC con `Z`.
   Codifique `+` como `%2B` en los queries para conservar los desfases positivos.
@@ -107,7 +102,41 @@ Sin autenticación, parámetros ni body; respuesta exitosa: 200.
 
 Health no comprueba que PostgreSQL, Keycloak o Redis estén listos. Clinics, users y
 audit necesitan una configuración de base válida para arrancar, incluso para servir
-health. Users además requiere `CLINICS_SERVICE_URL`.
+health. Users además requiere `CLINICS_SERVICE_URL`; appointments requiere las URL
+de clinics/users y configuración válida de caché cuando esté habilitada.
+
+## Alta de clínicas y usuarios (RF1-RF2)
+
+| Dueño / rol | Método y ruta | Entrada | Éxito |
+| --- | --- | --- | --- |
+| clinics / platform_admin | `POST /clinics` | `{ name, identifier, timeZone, administrator: { username, initialPassword } }` | 201 `{ clinicId, identifier, appUserId }` |
+| users / clinic_admin | `POST /users` | `{ username, initialPassword, role }` | 201 `{ appUserId, clinicId, role }` |
+| users / clinic_admin | `PUT /users/:id/role` | `{ role }` | 204 |
+| users / clinic_admin | `DELETE /users/:id` | Sin body | 204, baja lógica |
+
+Bodies estrictos. Nombre/identificador de clínica: 128/32 caracteres recortados;
+`timeZone` debe ser zona IANA. Username: 3-128 caracteres recortados; contraseña
+inicial: 12-256 caracteres. Roles: `clinic_admin`, `receptionist`, `professional`.
+No hay listado de clínicas/usuarios, GET de usuario ni login de dominio.
+
+Body inválido: 422 `invalid_request`; ID de usuario mal formado o invisible: 404.
+Conflictos del alta: 409 `clinic_exists`/`bootstrap_conflict`; dependencias: 503
+`bootstrap_unavailable`. Un alta incompleta se puede reintentar con el mismo
+identificador, nombre, zona y username del administrador. Gestión de usuarios:
+409 `username_taken`/`conflict`, 401 `identity_out_of_date` o 503
+`identity_unavailable`/`activation_unconfirmed`. Para el último, el header
+`Location: /users/:id/role` del POST identifica la recuperación con PUT y el mismo
+rol; no repita a ciegas la creación. Cambiar rol invalida sesiones; obtenga tokens nuevos.
+
+Handshake interno de RF1, también exclusivo de platform_admin: clinics
+`GET /clinics/:id/pending-admin` devuelve 200 `{ clinicId, appUserId, username }`
+solo para clínicas pendientes (si no, 404). Users `POST /users/bootstrap/:id` recibe
+`{ initialPassword }`, consulta ese registro y devuelve 201
+`{ appUserId, clinicId, role: "clinic_admin" }`; entrada inválida: 422, pendiente
+inexistente: 404, conflictos: 409, dependencias: 503. Para la demo use `POST /clinics`.
+
+Los roles de clínica leen `GET /clinic/time-zone` en clinics: sin query/body;
+200 `{ clinicId, timeZone }`, 422 si hay query y 404 si la clínica no existe.
 
 ## Catálogo de servicios (clinics-service, RF3)
 
@@ -325,6 +354,26 @@ El payload del evento es
 nunca contiene el texto de la nota. Copiar los eventos a `audit_log` en `logs_db` es
 tarea del relay (tarjeta N10), que todavía no está implementado.
 
+## Pacientes (users-service, RF14 parcial)
+
+| Método y ruta | Permiso | Éxito |
+| --- | --- | --- |
+| `POST /patients` | `patient:create` | 201 `{ patientId }`, `Location: /patients/:patientId` |
+| `PATCH /patients/:patientId` | `patient:update` | 204, sin body |
+| `GET /patients/:patientId` | `patient:read` | 200 `{ patientId }`: pertenece a la clínica del token |
+
+POST exige identification, fullName y birthDate; phone/email son opcionales o null.
+PATCH acepta un subconjunto no vacío; omitir conserva el campo y null borra
+phone/email. Bodies estrictos; sin query. Límites recortados de identification,
+fullName, phone y email: 32/128/32/128. Email válido; birthDate es fecha real no
+futura YYYY-MM-DD (fecha UTC del servicio).
+
+Errores: 404 not_found para paciente desconocido/ajeno; 409 duplicate_identification
+por clínica; 422 invalid_request para entrada inválida/vacía; 503 audit_unavailable
+si falla encolar auditoría de contacto (revierte la escritura). La consulta devuelve
+solo patientId, sin contacto ni otros datos personales. Las escrituras encolan
+AuditRecorded en users_db.outbox; entrega a logs_db pendiente N10. No hay lectura de contacto.
+
 ## Historial del paciente (appointments-service, RF16)
 
 `GET /patients/:patientId/appointments`, sin body ni filtros en el query.
@@ -441,18 +490,20 @@ Un 503 no garantiza que reintentar un POST sea seguro sin idempotencia.
 
 ## Colección para la demo
 
-La Etapa 2 entregará la colección versionada de peticiones con la configuración del
-entorno, las URL de los servicios y variables locales para los tokens. Todavía no se
-ha creado. Los usuarios semilla por rol y clínica y el recorrido completo por gateway
-y Compose siguen pendientes de validar; ningún token real ni secreto va en Git.
+Importe la [colección Postman](../postman/collections/medicitas-demo.postman_collection.json)
+y siga sus [instrucciones de entorno/tokens locales](../postman/README.es.md).
+
+El [recorrido REST Client](../requests/demo.http) y su
+[ejemplo de entorno](../requests/.env.example) versionados usan URL directas y
+variables locales de tokens. Las respuestas son esperadas, no evidencia de la pila
+completa. Obtenga tokens nuevos de usuarios semilla en Keycloak; no guarde secretos en Git.
 
 ## Evidencia revisada y trabajo pendiente
 
-Contrastado con el código y las pruebas existentes; **durante la etapa 1 de J5 no se
-ejecutaron peticiones ni pruebas**. Las pruebas existentes tienen alcances parciales,
-incluidos PostgreSQL y dependencias simuladas, sin validar la pila completa con
-Keycloak y gateway. El detalle de cobertura corresponde a J7. Para RF1, el administrador de plataforma llama a
-`POST /clinics` en clinics con `{ name, identifier, timeZone, administrator: { username, initialPassword } }` (201).
-Para RF2, el administrador de clínica llama en users a `POST /users` con `{ username, initialPassword, role }` (201),
-`PUT /users/:id/role` con `{ role }` (204) o `DELETE /users/:id` para dar de baja (204).
-El relay de RF18 que copia los eventos de auditoría a `logs_db` sigue pendiente.
+Contrastado con rutas, arranque y pruebas existentes; el contrato no afirma una demo
+completa ejecutada. El detalle de cobertura corresponde a J7.
+Falta implementar: proxy del gateway; entrega de auditoría RF18 desde outbox de
+users/appointments a `logs_db` (N10); lectura de contacto del paciente. El relay de
+agenda Redis ya implementado repara invalidaciones de caché; no es el de auditoría.
+Leer bitácora semilla no demuestra entrega de eventos nuevos. La validación de demo
+con pila completa y la prueba automatizada de carrera son independientes de este recorrido.

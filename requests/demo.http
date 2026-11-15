@@ -4,12 +4,11 @@
 # Send one request at a time; mutate only your own disposable environment.
 # NOT EXECUTED: all responses below are expected, not observed.
 # HEALTH: needs a running service; does not establish dependency readiness.
-# APPT: PENDING VALIDATION - routes exist but normal startup does not mount them;
-# requires dependencies/adapters as applicable, database access and seed identities.
-# RF16 verifies Bearer when mounted; other appointments routes need auth wiring.
-# AUDIT: PENDING VALIDATION - RF19 has normal startup; needs logs DB/JWT config
-# and valid seed-role tokens for authenticated calls. No seed login is provided yet.
-# Compose has no HTTP services; gateway does not proxy. Use direct service URLs.
+# APPT/AUDIT: normal server.ts startup mounts the domain routes and verifies Bearer.
+# Requires running databases, service adapters and fresh Keycloak seed-role tokens.
+# Compose starts all HTTP services, but only publishes the gateway, which has no proxy.
+# For direct host service ports see README.md Local startup. Expected results remain
+# unverified until run against your local stack; audit delivery to logs_db is pending N10.
 # reserveA/rescheduleA response IDs use the latest response; require a successful
 # 201 first. Stop on unexpected responses or unresolved variables; do not resend
 # bookings to recover IDs. Syntax: https://github.com/Huachao/vscode-restclient#request-variables

@@ -5,3 +5,7 @@ node_modules
 dist
 .vscode/*
 *.log
+
+# Postman: version only safe examples, never a populated local environment.
+/postman/environments/*
+!/postman/environments/*.example.postman_environment.json

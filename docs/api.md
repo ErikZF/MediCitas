@@ -8,7 +8,7 @@ Domain routes use HTTP/JSON and are grouped by responsibility: appointments
 contains scheduling, booking and appointment queries; audit reads the separate
 log database. Booking obtains catalog and patient information through injected
 dependencies before its database transaction, keeping external lookups outside
-that transaction. Some of the endpoints those adapters call are still pending (see below).
+that transaction. Those catalog, professional and patient lookups are implemented.
 
 Identity is delegated to Keycloak so the domain API does not manage login or
 credentials. Where Bearer verification is wired, the service derives the clinic
@@ -25,26 +25,21 @@ public entry point, but currently serves only root/health and forwards no reques
 
 ## Actual route availability
 
-The routes below are relative to their **owning service**. There is no public
-prefix or gateway proxy to them yet. A route implemented and tested through
-`createApp(deps)` is not necessarily exposed by `npm run dev`.
+The routes below are relative to their **owning service**. All features in this
+table are wired by their normal `server.ts`; tests can also inject dependencies
+through `createApp(deps)`.
 
-| Service / feature | Implemented | Dependencies required to mount it in `createApp` | Enabled by normal `server.ts` startup | Compose / gateway |
-| --- | --- | --- | --- | --- |
-| All five services: `GET /health`; gateway: `GET /` | Yes | None to mount health | Yes, if the service starts successfully | Compose has no HTTP services; gateway only serves its two routes |
-| clinics: service catalog (RF3) | Yes | `serviceCatalog: { db }` | Yes: clinics DB and verified Bearer | No end-to-end path |
-| clinics: specialties (RF4 reference data) | Yes | `serviceCatalog: { db }` | Yes: same clinics DB and Bearer verification | No end-to-end path |
-| users: professional registration and lookup (RF4) | Yes | `professionals: { db, specialties, syncProfessionalId }` | Yes: users DB, clinics and Keycloak Admin API | Direct service |
-| appointments: professional services (RF4) | Yes | `associations: { db, catalog, directory }` | Yes: appointments DB, clinics and users | Direct service |
-| users: patient registration/update and membership (RF14 partial) | Yes | `patients: { db }` | Yes: same users startup and verified Bearer | No end-to-end path |
-| appointments: working hours and blocks (RF5-RF6) | Yes | `schedule: { db, directory }` | Yes: appointments DB, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` and verified Bearer | No end-to-end path |
-| appointments: availability (RF7-RF8) | Yes | `availability: { db, catalog, directory }` | Yes: appointments DB, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` and verified Bearer; Redis cache when `REDIS_URL` is set | No end-to-end path |
-| appointments: booking, retrieval and lifecycle (RF9-RF13) | Yes | `booking: { db, catalog, patients }` | Yes: appointments DB, `CLINICS_SERVICE_URL`, `USERS_SERVICE_URL` and verified Bearer | No end-to-end path |
-| appointments: patient history (RF16) | Yes | `patientHistory: { db }` | Yes: appointments DB and verified Bearer | No end-to-end path |
-| appointments: clinical note (RF15) and its audit events (RF18 producer) | Yes | `clinicalNotes: { db }` | Yes: appointments DB and verified Bearer | No end-to-end path |
-| appointments: daily agenda (RF20) | Yes | `dailyAgenda: { db, clinics }` | Yes: appointments DB, `CLINICS_SERVICE_URL` and verified Bearer | No end-to-end path |
-| appointments: counts (RF21) | Yes | `appointmentCounts: { db }` | Yes: same appointments startup and verified Bearer | No end-to-end path |
-| audit: log query (RF19) | Yes | `auditQuery: { db }` | Yes: creates a logs database connection and requires Bearer | No end-to-end path |
+| Service | Routes enabled at normal startup | Runtime dependencies | Default Compose host access |
+| --- | --- | --- | --- |
+| edge-gateway | `GET /`, `GET /health` only | HTTP configuration | `API_PORT` (default 3000); no domain forwarding |
+| clinics-service | `/health`, RF1 `/clinics`, RF3 `/services`, RF4 `/specialties`, `/clinic/time-zone` | clinics DB, Keycloak; users for RF1 | Private network only |
+| users-service | `/health`, RF2 `/users`, RF4 `/professionals`, RF14 `/patients` | users DB, Keycloak Admin API, clinics | Private network only |
+| appointments-service | `/health`, RF4 assignments, RF5-RF13, RF15-RF16, RF20-RF21 below | appointments DB, clinics, users, Keycloak; optional Redis cache/agenda relay | Private network only |
+| audit-service | `/health`, RF19 `/audit/logs` | logs DB, Keycloak | Private network only |
+
+Compose now starts all five HTTP services, four PostgreSQL 18 databases, Keycloak,
+its user seed and Redis. For direct host access use the local port override in the
+[README](../README.md#local-startup); do not send domain requests to the gateway.
 
 **appointments-service dependencies.** Booking, availability and schedules call
 other services with the caller's Bearer token, before any transaction opens:
@@ -53,14 +48,14 @@ other services with the caller's Bearer token, before any transaction opens:
 | --- | --- | --- |
 | clinics `GET /services/:serviceId` | Specialty, duration, clinic time zone and `isActive` | All clinic roles |
 | users `GET /professionals/:professionalId` | Active professional in the clinic | 200 `{ professionalId }`; clinic admins also receive `specialtyIds` |
-| users `GET /patients/:patientId` | The patient belongs to the clinic; only `patientId` is read | Implemented (RF14): 200 `{ patientId }`; end-to-end validation pending |
+| users `GET /patients/:patientId` | The patient belongs to the clinic; only `patientId` is read | Implemented (RF14): 200 `{ patientId }` |
 
 A 404 from those services is answered as 404. Any other failure (403, 5xx,
 timeout, unusable body) is answered as 503 `dependency_unavailable`.
 
 ## Identity, permissions and shared formats
 
-- RF3 and the RF4 routes below verify Bearer and derive tenant context from it.
+- Clinics and users domain routes verify Bearer and derive tenant context from it.
 - Every appointments-service route and RF19 verify `Authorization: Bearer <access_token>`
   when mounted without a `resolveContext` override, which only tests pass.
   MediCitas has no login endpoint. `x-test-context` is test-only.
@@ -70,10 +65,10 @@ timeout, unusable body) is answered as 503 `dependency_unavailable`.
   `user_id`), a domain role and a UUID `clinic_id` for clinic roles; professionals
   also need a UUID `professional_id`. The role is the valid `role` claim or the
   first recognized role in `realm_access.roles`. `platform_admin` has no clinic
-  and cannot access the domain operations below.
+  and can only perform clinic onboarding and its internal bootstrap calls below.
 - JSON bodies use `Content-Type: application/json`. Documented GET requests
   require no body. Route identifiers are UUIDs; malformed route IDs return
-  **404**, not 422. UUIDs in bodies and queries are validated with 422.
+  **404**, not 422 (the internal bootstrap route uses 422). UUIDs in bodies and queries are validated with 422.
 - Input instants use ISO 8601 with `Z` or an explicit offset, for example
   `2027-01-04T09:00:00-06:00`; output timestamps use UTC with `Z`.
   Encode `+` as `%2B` in queries to preserve positive offsets.
@@ -104,7 +99,41 @@ No authentication, parameters or body; successful response: 200.
 
 Health does not check PostgreSQL, Keycloak or Redis readiness. Clinics, users and audit
 need valid database configuration to start normally, even to serve health.
-Users also requires `CLINICS_SERVICE_URL`.
+Users also requires `CLINICS_SERVICE_URL`; appointments requires both clinics/users
+URLs and valid cache configuration when enabled.
+
+## Clinic onboarding and users (RF1-RF2)
+
+| Owner / role | Method and route | Input | Success |
+| --- | --- | --- | --- |
+| clinics / platform_admin | `POST /clinics` | `{ name, identifier, timeZone, administrator: { username, initialPassword } }` | 201 `{ clinicId, identifier, appUserId }` |
+| users / clinic_admin | `POST /users` | `{ username, initialPassword, role }` | 201 `{ appUserId, clinicId, role }` |
+| users / clinic_admin | `PUT /users/:id/role` | `{ role }` | 204 |
+| users / clinic_admin | `DELETE /users/:id` | No body | 204, logical deactivation |
+
+Bodies are strict. Clinic name/identifier limits are 128/32 trimmed characters;
+`timeZone` must be an IANA zone. Usernames have 3-128 trimmed characters and initial
+passwords 12-256 characters. Roles: `clinic_admin`, `receptionist`, `professional`.
+There is no clinic/user list, user GET or domain login route.
+
+Invalid bodies return 422 `invalid_request`; malformed or invisible managed user
+IDs return 404. Onboarding conflicts return 409 `clinic_exists`/`bootstrap_conflict`;
+dependency failures return 503 `bootstrap_unavailable`. An incomplete onboarding
+can be retried with the same identifier, name, zone and administrator username.
+User management can return 409 `username_taken`/`conflict`, 401 `identity_out_of_date`
+or 503 `identity_unavailable`/`activation_unconfirmed`. For the latter, the POST
+response's `Location: /users/:id/role` identifies recovery with PUT and the same role;
+do not blindly repeat user creation. Role changes invalidate sessions; obtain new tokens.
+
+Internal RF1 handshake, also restricted to platform_admin: clinics
+`GET /clinics/:id/pending-admin` returns 200 `{ clinicId, appUserId, username }`
+only for a pending clinic (otherwise 404). Users `POST /users/bootstrap/:id` takes
+`{ initialPassword }`, reads that pending record and returns 201
+`{ appUserId, clinicId, role: "clinic_admin" }`; invalid input is 422, missing pending
+clinic 404, conflicts 409 and dependency failures 503. Call `POST /clinics` for the demo.
+
+Clinic roles can read `GET /clinic/time-zone` in clinics: no query/body;
+200 `{ clinicId, timeZone }`, 422 for a query, 404 if the clinic is absent.
 
 ## Service catalog (clinics-service, RF3)
 
@@ -451,20 +480,20 @@ A 503 does not promise safe POST retries without idempotency.
 
 ## Demo collection
 
-Stage 2 will provide the versioned request collection with environment setup,
-service URLs and local token variables. It has not been created yet. Seed users
-by role/clinic and the complete gateway/Compose path remain pending validation;
-no real tokens or secrets belong in Git.
+Import the [Postman collection](../postman/collections/medicitas-demo.postman_collection.json)
+and follow its [local environment/token instructions](../postman/README.md).
+
+The versioned [REST Client walkthrough](../requests/demo.http) and its
+[environment example](../requests/.env.example) use direct service URLs and local
+token variables. Its responses are expectations, not full-stack evidence. Use
+seeded users in Keycloak for fresh tokens; never put real tokens or secrets in Git.
 
 ## Reviewed evidence and pending work
 
-Cross-checked against code and existing tests; **no requests or tests were executed
-during J5 stage 1**. Existing tests have partial scopes, including PostgreSQL and
-mocked dependencies, without full-stack Keycloak/gateway validation. Coverage
-details belong to J7. For RF1 a platform administrator calls clinics `POST /clinics`
-with `{ name, identifier, timeZone, administrator: { username, initialPassword } }` (201).
-For RF2 a clinic administrator calls users `POST /users` with `{ username, initialPassword, role }` (201),
-`PUT /users/:id/role` with `{ role }` (204), or `DELETE /users/:id` to deactivate (204).
-RF14 registration/update and minimal patient membership are implemented. The RF18
-relay (N10) that copies audit events into `logs_db` and end-to-end validation remain
-pending.
+Cross-checked against current routes, composition roots and existing tests; this
+contract does not claim a complete demo run. Coverage details belong to J7.
+Pending implementation: gateway proxy; RF18 audit delivery from users/appointments
+outboxes into `logs_db` (N10); patient contact reads. The implemented Redis agenda
+relay repairs cache invalidations; it is not the audit relay. Reading seeded audit
+rows does not prove delivery of newly produced events. Full-stack demo validation
+and the automated concurrency proof remain separate from this request walkthrough.
