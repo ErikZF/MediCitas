@@ -142,6 +142,7 @@ and volumes. Options, recorded results and limits: [test report](docs/test-repor
 | Postman demo | [postman/README.md](postman/README.md) | [postman/README.es.md](postman/README.es.md) |
 | Databases and RLS | [docs/database.md](docs/database.md) | [docs/database.es.md](docs/database.es.md) |
 | Data dictionary | [docs/data-dictionary.md](docs/data-dictionary.md) | [docs/data-dictionary.es.md](docs/data-dictionary.es.md) |
+| Normalization to 3NF | [docs/normalization.md](docs/normalization.md) | [docs/normalization.es.md](docs/normalization.es.md) |
 | Multi-tenancy architecture | [docs/multitenancy.md](docs/multitenancy.md) | [docs/multitenancy.es.md](docs/multitenancy.es.md) |
 | Multi-tenancy comparison | [docs/database-comparison.md](docs/database-comparison.md) | [docs/database-comparison.es.md](docs/database-comparison.es.md) |
 | Identity with Keycloak | [docs/keycloak.md](docs/keycloak.md) | [docs/keycloak.es.md](docs/keycloak.es.md) |

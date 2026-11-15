@@ -144,6 +144,7 @@ elimina sus contenedores y volúmenes. Opciones, resultados registrados y límit
 | Demo Postman | [postman/README.es.md](postman/README.es.md) | [postman/README.md](postman/README.md) |
 | Bases de datos y RLS | [docs/database.es.md](docs/database.es.md) | [docs/database.md](docs/database.md) |
 | Diccionario de datos | [docs/data-dictionary.es.md](docs/data-dictionary.es.md) | [docs/data-dictionary.md](docs/data-dictionary.md) |
+| Normalización hasta 3FN | [docs/normalization.es.md](docs/normalization.es.md) | [docs/normalization.md](docs/normalization.md) |
 | Arquitectura multi-tenancy | [docs/multitenancy.es.md](docs/multitenancy.es.md) | [docs/multitenancy.md](docs/multitenancy.md) |
 | Comparación de multi-tenancy | [docs/database-comparison.es.md](docs/database-comparison.es.md) | [docs/database-comparison.md](docs/database-comparison.md) |
 | Identidad con Keycloak | [docs/keycloak.es.md](docs/keycloak.es.md) | [docs/keycloak.md](docs/keycloak.md) |

@@ -5,7 +5,8 @@
 MediCitas stores its data in four PostgreSQL 18 databases, one per domain service.
 
 See the [data dictionary](data-dictionary.md) for columns, keys and differences
-between new and existing databases.
+between new and existing databases. The [normalization guide](normalization.md)
+explains the steps to 3NF and the redundancies kept in the physical model.
 
 ---
 
