@@ -4,6 +4,9 @@
 
 MediCitas guarda sus datos en cuatro bases PostgreSQL 18, una por servicio de dominio.
 
+Vea el [diccionario de datos](data-dictionary.es.md) para columnas, claves y
+diferencias entre bases nuevas y existentes.
+
 ---
 
 ## 1. Distribución de dominios y tablas

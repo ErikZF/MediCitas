@@ -143,6 +143,7 @@ elimina sus contenedores y volúmenes. Opciones, resultados registrados y límit
 | Contrato de la API | [docs/api.es.md](docs/api.es.md) | [docs/api.md](docs/api.md) |
 | Demo Postman | [postman/README.es.md](postman/README.es.md) | [postman/README.md](postman/README.md) |
 | Bases de datos y RLS | [docs/database.es.md](docs/database.es.md) | [docs/database.md](docs/database.md) |
+| Diccionario de datos | [docs/data-dictionary.es.md](docs/data-dictionary.es.md) | [docs/data-dictionary.md](docs/data-dictionary.md) |
 | Arquitectura multi-tenancy | [docs/multitenancy.es.md](docs/multitenancy.es.md) | [docs/multitenancy.md](docs/multitenancy.md) |
 | Comparación de multi-tenancy | [docs/database-comparison.es.md](docs/database-comparison.es.md) | [docs/database-comparison.md](docs/database-comparison.md) |
 | Identidad con Keycloak | [docs/keycloak.es.md](docs/keycloak.es.md) | [docs/keycloak.md](docs/keycloak.md) |
