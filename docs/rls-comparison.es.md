@@ -54,6 +54,11 @@ Los tiempos son la mediana de 7 corridas en un contenedor de 2 vCPU con PostgreS
 trabajo, y el tiempo su costo en esa máquina. El script también comprueba que todas las
 variantes devuelvan las mismas filas.
 
+Ahora los servicios corren cada petición con el rol de base de su actor (`db_admin`,
+`db_receptionist`, `db_professional`; ver [database.es.md](database.es.md#roles-de-base-con-menor-privilegio)).
+Las políticas se aplican igual a todos los roles, así que los planes y costos medidos como
+`medicitas_app` son los mismos que obtienen.
+
 ## Aislamiento
 
 [`tests/integration/rls-vs-column.test.ts`](../services/appointments-service/tests/integration/rls-vs-column.test.ts)

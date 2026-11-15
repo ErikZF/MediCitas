@@ -16,7 +16,7 @@ import { withTenantTx, type Database, type TenantContext, type Transaction } fro
 import { recordAudit } from '../../db/audit-outbox.ts';
 import { appointment, clinicalNote } from '../../db/schema.ts';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../domain/errors.ts';
-import { asApp } from '../booking/booking.service.ts';
+import { asActor } from '../booking/booking.service.ts';
 import type { ClinicalNoteInput } from './clinical-note.schemas.ts';
 
 export interface ClinicalNoteDeps {
@@ -102,7 +102,7 @@ export async function createClinicalNote(
 
     await recordAudit(tx, ctx, { action: 'create', resource: 'clinical_note', resourceId: row.clinicalNoteId, patientId: visit.patientId, occurredAt: now });
     return toDto(row);
-  }, asApp);
+  }, asActor);
 }
 
 /** GET: 200 with the note; 404 if the appointment has none yet. */
@@ -120,7 +120,7 @@ export async function readClinicalNote(deps: ClinicalNoteDeps, ctx: TenantContex
     // A read is recorded too (RF18): the transaction is not read-only on purpose.
     await recordAudit(tx, ctx, { action: 'read', resource: 'clinical_note', resourceId: row.clinicalNoteId, patientId: visit.patientId, occurredAt: now });
     return toDto(row);
-  }, asApp);
+  }, asActor);
 }
 
 /** PUT: 200 with the note; 404 if the appointment has none yet. */
@@ -145,5 +145,5 @@ export async function updateClinicalNote(
 
     await recordAudit(tx, ctx, { action: 'update', resource: 'clinical_note', resourceId: row.clinicalNoteId, patientId: visit.patientId, occurredAt: now });
     return toDto(row);
-  }, asApp);
+  }, asActor);
 }

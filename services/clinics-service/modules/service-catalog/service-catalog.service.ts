@@ -1,6 +1,6 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { hasPermission, type Permission } from '@medicitas/auth';
-import { MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext, type Transaction } from '@medicitas/db';
+import { MEDICITAS_DB_ROLES, withTenantTx, type Database, type TenantContext, type Transaction } from '@medicitas/db';
 import { clinic, service } from '../../db/schema.ts';
 import { CatalogError } from './service-catalog.errors.ts';
 import { parseServiceId, parseServiceInput } from './service-catalog.schemas.ts';
@@ -28,8 +28,8 @@ export interface ServiceDto {
   timeZone: string;
 }
 
-const asApp = { dbRoles: MEDICITAS_APP_ROLE } as const;
-const readAsApp = { ...asApp, accessMode: 'read only' } as const;
+const asActor = { dbRoles: MEDICITAS_DB_ROLES } as const;
+const readAsActor = { ...asActor, accessMode: 'read only' } as const;
 
 function authorize(ctx: TenantContext, permission: Permission): void {
   if (ctx.clinicId === null || !hasPermission(ctx.role, permission)) throw new CatalogError(403);
@@ -53,13 +53,13 @@ export async function createService(deps: ServiceCatalogDeps, ctx: TenantContext
     const [created] = await tx.insert(service).values({ ...values, clinicId: ctx.clinicId! })
       .returning({ serviceId: service.serviceId });
     return findService(tx, created!.serviceId);
-  }, asApp);
+  }, asActor);
 }
 
 export async function getService(deps: ServiceCatalogDeps, ctx: TenantContext, id: unknown): Promise<ServiceDto> {
   authorize(ctx, 'schedule:read');
   const serviceId = parseServiceId(id);
-  return withTenantTx(deps.db, ctx, (tx) => findService(tx, serviceId), readAsApp);
+  return withTenantTx(deps.db, ctx, (tx) => findService(tx, serviceId), readAsActor);
 }
 
 export async function listServices(deps: ServiceCatalogDeps, ctx: TenantContext): Promise<ServiceDto[]> {
@@ -67,7 +67,7 @@ export async function listServices(deps: ServiceCatalogDeps, ctx: TenantContext)
   return withTenantTx(deps.db, ctx, (tx) => tx.select(serviceFields).from(service)
     .innerJoin(clinic, eq(service.clinicId, clinic.clinicId))
     .where(eq(service.isActive, true))
-    .orderBy(asc(service.name), asc(service.serviceId)), readAsApp);
+    .orderBy(asc(service.name), asc(service.serviceId)), readAsActor);
 }
 
 export async function updateService(deps: ServiceCatalogDeps, ctx: TenantContext, id: unknown, input: unknown): Promise<ServiceDto> {
@@ -81,7 +81,7 @@ export async function updateService(deps: ServiceCatalogDeps, ctx: TenantContext
       .returning({ serviceId: service.serviceId });
     if (!updated) throw new CatalogError(404);
     return findService(tx, updated.serviceId);
-  }, asApp);
+  }, asActor);
 }
 
 export async function deleteService(deps: ServiceCatalogDeps, ctx: TenantContext, id: unknown): Promise<void> {
@@ -94,5 +94,5 @@ export async function deleteService(deps: ServiceCatalogDeps, ctx: TenantContext
       .where(eq(service.serviceId, serviceId))
       .returning({ serviceId: service.serviceId });
     if (!deleted) throw new CatalogError(404);
-  }, asApp);
+  }, asActor);
 }

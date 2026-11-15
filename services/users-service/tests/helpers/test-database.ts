@@ -33,7 +33,7 @@ export async function createTestDatabase(adminUrl: string, owner: 'users' | 'cli
   try {
     await pool.query(readFileSync(new URL(`../../../../database/${owner}/init.sql`, import.meta.url), 'utf8'));
     const password = randomUUID();
-    await pool.query(`CREATE ROLE ${login} LOGIN PASSWORD '${password}' IN ROLE medicitas_app`);
+    await pool.query(`CREATE ROLE ${login} LOGIN PASSWORD '${password}' IN ROLE medicitas_app, db_admin, db_receptionist, db_professional`);
     loginCreated = true;
     target.username = login;
     target.password = password;

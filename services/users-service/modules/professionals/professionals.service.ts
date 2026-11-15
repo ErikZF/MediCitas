@@ -1,6 +1,6 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { hasPermission } from '@medicitas/auth';
-import { MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext, type Transaction } from '@medicitas/db';
+import { MEDICITAS_DB_ROLES, withTenantTx, type Database, type TenantContext, type Transaction } from '@medicitas/db';
 import { appUser, professional, professionalSpecialty } from '../../db/schema.ts';
 import { ProfessionalError } from './professionals.errors.ts';
 import { parseProfessionalId, parseProfessionalInput } from './professionals.schemas.ts';
@@ -44,7 +44,7 @@ export async function getProfessional(deps: ProfessionalDeps, ctx: TenantContext
     if (!row) throw new ProfessionalError('not_found');
     if (!hasPermission(ctx.role, 'professional:create')) return row;
     return { ...row, specialtyIds: await specialtyIdsOf(tx, clinicId, professionalId) };
-  }, { dbRoles: MEDICITAS_APP_ROLE, accessMode: 'read only' });
+  }, { dbRoles: MEDICITAS_DB_ROLES, accessMode: 'read only' });
 }
 
 export async function registerProfessional(
@@ -93,7 +93,7 @@ export async function registerProfessional(
       professionalId: created.professionalId, specialtyId, clinicId,
     })));
     return { professionalId: created.professionalId, created: true };
-  }, { dbRoles: MEDICITAS_APP_ROLE });
+  }, { dbRoles: MEDICITAS_DB_ROLES });
 
   // Publish only a committed ID. Serialize with RF2 role changes, without retrying external I/O.
   const updated = await withTenantTx(deps.db, ctx, async (tx) => {
@@ -101,7 +101,7 @@ export async function registerProfessional(
     const [user] = await tx.select().from(appUser).where(target).for('update');
     if (!user?.isActive || user.roleCode !== 'professional') throw new ProfessionalError('invalid_professional_user');
     return deps.syncProfessionalId(user.keycloakSub, clinicId, values.appUserId, profile.professionalId);
-  }, { dbRoles: MEDICITAS_APP_ROLE, retry: false });
+  }, { dbRoles: MEDICITAS_DB_ROLES, retry: false });
   if (!profile.created && !updated) throw new ProfessionalError('duplicate');
   const dto: ProfessionalDto = { ...values, professionalId: profile.professionalId, isActive: true };
   return { dto, status: profile.created ? 201 : 200 };

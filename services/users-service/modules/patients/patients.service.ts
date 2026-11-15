@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { hasPermission } from '@medicitas/auth';
 import {
-  assertTenantContext, findPgError, MEDICITAS_APP_ROLE, withTenantTx,
+  assertTenantContext, findPgError, MEDICITAS_DB_ROLES, withTenantTx,
   type Database, type TenantContext, type Transaction,
 } from '@medicitas/db';
 import { patient, patientAuditOutbox } from '../../db/patients.schema.ts';
@@ -20,8 +20,8 @@ export function assertPatientAccess(ctx: TenantContext, permission: PatientPermi
   if (ctx.clinicId === null || !hasPermission(ctx.role, permission)) throw new PatientError('forbidden');
 }
 
-const asApp = {
-  dbRoles: MEDICITAS_APP_ROLE,
+const asActor = {
+  dbRoles: MEDICITAS_DB_ROLES,
   constraintErrors: {
     patient_clinic_id_identification_key: {
       status: 409, code: 'duplicate_identification', message: 'Identification already registered in this clinic.',
@@ -65,7 +65,7 @@ export async function createPatient(deps: PatientsDeps, ctx: TenantContext, inpu
     // Registration creates the contact record even when its values are initially null.
     await enqueueContactAudit(tx, ctx, created!.patientId, 'create', now);
     return created!;
-  }, asApp);
+  }, asActor);
 }
 
 export async function updatePatient(deps: PatientsDeps, ctx: TenantContext, id: unknown, input: unknown): Promise<void> {
@@ -81,7 +81,7 @@ export async function updatePatient(deps: PatientsDeps, ctx: TenantContext, id: 
     if (values.phone !== undefined || values.email !== undefined) {
       await enqueueContactAudit(tx, ctx, patientId, 'update', now);
     }
-  }, asApp);
+  }, asActor);
 }
 
 /** Existence only: projects no contact columns, needs no RF18 contact-read event. */
@@ -93,5 +93,5 @@ export async function getPatientMembership(deps: PatientsDeps, ctx: TenantContex
       .where(and(eq(patient.patientId, patientId), eq(patient.clinicId, ctx.clinicId!))).limit(1);
     if (!found) throw new PatientError('not_found');
     return found;
-  }, { dbRoles: MEDICITAS_APP_ROLE, accessMode: 'read only' });
+  }, { dbRoles: MEDICITAS_DB_ROLES, accessMode: 'read only' });
 }

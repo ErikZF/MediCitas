@@ -40,7 +40,7 @@ export async function createTestDatabase(adminUrl: string) {
     await pool.query(readFileSync(schemaSql, 'utf8'));
     // Generated identifiers/password only. Runtime connects without superuser or
     // BYPASSRLS privileges; fixture setup alone uses the test instance owner.
-    await pool.query(`CREATE ROLE ${login} LOGIN PASSWORD '${password}' IN ROLE medicitas_app`);
+    await pool.query(`CREATE ROLE ${login} LOGIN PASSWORD '${password}' IN ROLE medicitas_app, db_admin, db_receptionist, db_professional`);
     loginCreated = true;
     target.username = login;
     target.password = password;

@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { extractTenantContext, requirePermission } from '@medicitas/auth';
-import { withTenantTx, MEDICITAS_APP_ROLE, type Database, isUuid } from '@medicitas/db';
+import { withTenantTx, MEDICITAS_DB_ROLES, type Database, isUuid } from '@medicitas/db';
 import { z } from 'zod';
 import { clinic } from '../../db/schema.ts';
 import { parseClinicRegistration } from './clinic-registration.schemas.ts';
@@ -13,7 +13,7 @@ export function clinicRegistration(db: Database, usersUrl: string | undefined) {
     if (extractTenantContext(req)?.role !== 'platform_admin') throw Object.assign(new Error(),{status:403});
     next();
   });
-  const options = {dbRoles:MEDICITAS_APP_ROLE};
+  const options = {dbRoles:MEDICITAS_DB_ROLES};
   router.get('/:id/pending-admin',async (req,res) => {
     if (!isUuid(req.params.id)) throw Object.assign(new Error(),{status:404});
     const [row] = await withTenantTx(db,extractTenantContext(req)!,tx => tx.select().from(clinic).where(eq(clinic.clinicId,req.params.id as string)),options);

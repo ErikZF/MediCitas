@@ -20,7 +20,7 @@ import { appointment } from '../../db/schema.ts';
 import { possibleLocalDates } from '../../cache/agenda-cache.ts';
 import { ForbiddenError, NotFoundError, TransitionError, ValidationError } from '../../domain/errors.ts';
 import { localDateOf } from '../../domain/zoned-time.ts';
-import { asApp, toAppointmentDto, type AppointmentDto, type BookingDeps } from './booking.service.ts';
+import { asActor, toAppointmentDto, type AppointmentDto, type BookingDeps } from './booking.service.ts';
 import type { CancelInput, OutcomeInput, RescheduleInput } from './lifecycle.schemas.ts';
 import { assertSlotBookable, slotFor } from './slot-rules.ts';
 
@@ -73,7 +73,7 @@ export async function rescheduleAppointment(
   const current = await withTenantTx(deps.db, ctx, async (tx) => {
     const [row] = await tx.select().from(appointment).where(eq(appointment.appointmentId, appointmentId));
     return row;
-  }, asApp);
+  }, asActor);
   if (current === undefined) {
     throw new NotFoundError('Appointment not found.');
   }
@@ -119,7 +119,7 @@ export async function rescheduleAppointment(
     }
 
     return toAppointmentDto(row!);
-  }, asApp);
+  }, asActor);
 
   // The old day frees a slot and the new day loses one; they may belong to two professionals.
   // professional_id and starts_at never change, so the pre-read row names the old day.
@@ -157,7 +157,7 @@ export async function cancelAppointment(
     // Only booked appointments hold time, so leaving booked frees it (E14 backstop).
     if (deps.cache) await recordAgendaChange(tx, ctx, row.professionalId, possibleLocalDates(row.startsAt));
     return toAppointmentDto(updated!);
-  }, asApp);
+  }, asActor);
 
   await agendaChanged(deps, ctx, cancelled);
   return cancelled;
@@ -207,7 +207,7 @@ export async function recordOutcome(
     // Only booked appointments hold time, so leaving booked frees it (E14 backstop).
     if (deps.cache) await recordAgendaChange(tx, ctx, row.professionalId, possibleLocalDates(row.startsAt));
     return toAppointmentDto(updated!);
-  }, asApp);
+  }, asActor);
 
   // Only booked appointments hold time: an appointment still in progress frees the rest of its slot.
   await agendaChanged(deps, ctx, recorded);

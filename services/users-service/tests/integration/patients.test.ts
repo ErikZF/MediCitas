@@ -235,13 +235,14 @@ describe.skipIf(!url)('RF14 patients and repeatable users outbox upgrade', () =>
 
   test('queue denial is audit_unavailable with rollback; unrelated database validation is not masked', async () => {
     const patientId = await create();
-    await database.pool.query('REVOKE INSERT ON public.outbox FROM medicitas_app');
+    // The request runs as the database role of its actor (db_receptionist).
+    await database.pool.query('REVOKE INSERT ON public.outbox FROM db_receptionist');
     try {
       const response = await request('PATCH', `/patients/${patientId}`, { phone: '9999-9999' });
       assert.equal(response.status, 503);
       assert.deepEqual(await response.json(), { error: 'Service unavailable.', code: 'audit_unavailable' });
     } finally {
-      await database.pool.query('GRANT INSERT ON public.outbox TO medicitas_app');
+      await database.pool.query('GRANT INSERT ON public.outbox TO db_receptionist');
     }
     assert.equal((await database.pool.query('SELECT phone FROM patient WHERE patient_id=$1', [patientId])).rows[0].phone, input.phone);
     assert.equal((await events()).length, 1);

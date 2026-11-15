@@ -1,6 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { hasPermission } from '@medicitas/auth';
-import { assertTenantContext, isUuid, MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
+import { assertTenantContext, isUuid, MEDICITAS_DB_ROLES, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
 import { appointment } from '../../db/schema.ts';
 import { ForbiddenError, ValidationError } from '../../domain/errors.ts';
 
@@ -48,7 +48,7 @@ export async function getPatientAppointmentHistory(
     .from(appointment)
     .where(and(eq(appointment.clinicId, clinicId), eq(appointment.patientId, patientId)))
     .orderBy(desc(appointment.startsAt), desc(appointment.appointmentId)),
-  { dbRoles: MEDICITAS_APP_ROLE, accessMode: 'read only' });
+  { dbRoles: MEDICITAS_DB_ROLES, accessMode: 'read only' });
 
   return rows.map((row) => ({
     ...row,
