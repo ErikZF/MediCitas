@@ -50,3 +50,6 @@ local a la transacción. Esto mantiene un esquema por servicio y aplica el filtr
 en el motor. El costo es mantener políticas e inicializar contexto en cada
 transacción. No afirmamos que sea la opción de menor costo de rendimiento. Hay
 una base por servicio; no una base por tenant.
+
+La comparación medida de RLS contra la columna discriminadora sola, sobre las mismas
+consultas y con los mismos intentos de fuga, está en [rls-comparison.es.md](rls-comparison.es.md).

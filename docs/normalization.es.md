@@ -92,6 +92,7 @@ Las excepciones siguientes limitan esa conclusión en el esquema físico.
 | `clinical_note` | La copia de `professional_id` permite aplicar RLS directamente. `appointment_status` siempre vale `attended`, una constante redundante. Su CHECK no impone el estado ni el profesional de la cita padre; la API comprueba ambos al crear la nota. La constante impide afirmar 3FN estricta para toda la tabla. |
 | Campos del alta | `clinic.bootstrap_admin_id` y `bootstrap_username` conservan datos pendientes de aprovisionamiento y se limpian al activar. `app_user.is_first_admin` marca al administrador inicial, con índice único parcial por clínica. |
 | `outbox` y `audit_log` | Conservan datos de eventos. El JSON de outbox lleva datos de enrutamiento/auditoría e identificadores repetidos; `AgendaChanged` puede incluir una lista de fechas. La bitácora conserva actor, paciente, recurso e instante como registro de solo inserción. Estas representaciones de eventos quedan fuera de la justificación relacional estricta de 3FN anterior. |
+| `audit_log.patient_id` | Para `patient_contact`, el productor repite `patient_id` en `resource_id`. Una columna común de paciente permite que RF19 filtre igual los eventos de notas y de contacto. SQL no impone la igualdad entre esos campos. |
 | `idempotency_keys` | Guarda una copia de respuesta en JSON, fuera del modelo central de entidades. La tabla existe, pero la API no la usa. |
 
 Las referencias entre bases son lógicas: no tienen FK física. Esto afecta cómo se

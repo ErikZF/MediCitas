@@ -91,6 +91,7 @@ limit that conclusion in the physical schema.
 | `clinical_note` | The copied `professional_id` supports direct RLS checks. `appointment_status` is always `attended`, a redundant constant. Its CHECK does not enforce the parent appointment's status or professional; the API checks both when creating the note. The constant prevents a strict 3NF claim for the full table. |
 | Onboarding fields | `clinic.bootstrap_admin_id` and `bootstrap_username` retain pending provisioning data and are cleared on activation. `app_user.is_first_admin` marks the bootstrap administrator, with a partial unique index per clinic. |
 | `outbox` and `audit_log` | They preserve event data. Outbox JSON carries routing/audit data, including repeated resource identifiers; `AgendaChanged` can include a list of dates. The audit log keeps actor, patient, resource and time as an append-only record. These event representations are outside the strict relational 3NF justification above. |
+| `audit_log.patient_id` | For `patient_contact`, the producer repeats `patient_id` in `resource_id`. A shared patient column lets RF19 filter both note and contact events in one way. SQL does not enforce equality between those fields. |
 | `idempotency_keys` | It stores a response snapshot as JSON, outside the core entity model. The table exists, but the API does not use it. |
 
 Cross-database references are logical: they have no physical FK. This affects

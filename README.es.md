@@ -147,6 +147,7 @@ elimina sus contenedores y volúmenes. Opciones, resultados registrados y límit
 | Normalización hasta 3FN | [docs/normalization.es.md](docs/normalization.es.md) | [docs/normalization.md](docs/normalization.md) |
 | Arquitectura multi-tenancy | [docs/multitenancy.es.md](docs/multitenancy.es.md) | [docs/multitenancy.md](docs/multitenancy.md) |
 | Comparación de multi-tenancy | [docs/database-comparison.es.md](docs/database-comparison.es.md) | [docs/database-comparison.md](docs/database-comparison.md) |
+| RLS frente a la columna discriminadora, medido | [docs/rls-comparison.es.md](docs/rls-comparison.es.md) | [docs/rls-comparison.md](docs/rls-comparison.md) |
 | Identidad con Keycloak | [docs/keycloak.es.md](docs/keycloak.es.md) | [docs/keycloak.md](docs/keycloak.md) |
 | Datos semilla de demo | [docs/seed-data.es.md](docs/seed-data.es.md) | [docs/seed-data.md](docs/seed-data.md) |
 | Concurrencia: el último espacio | [docs/concurrency.es.md](docs/concurrency.es.md) | [docs/concurrency.md](docs/concurrency.md) |

@@ -49,3 +49,6 @@ transaction-local identity. This keeps one schema per service and enforces row
 filtering in the engine. The cost is maintaining policies and initializing context
 for each transaction. We do not claim the lowest performance cost. Database per
 service is implemented; database per tenant is not.
+
+The measured comparison of RLS against the discriminator column alone, on the same
+queries and with the same leak attempts, is in [rls-comparison.md](rls-comparison.md).
