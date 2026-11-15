@@ -11,7 +11,7 @@ Multi-tenant SaaS platform for medical appointments (semester project, Stage 1 �
 
 ```
 services/
-  edge-gateway/          single entry point (formerly api/)
+  edge-gateway/          public root/health; domain proxy pending
   clinics-service/       clinics, specialties and services       → clinics_db
   users-service/         users, professionals and patients       → users_db
   appointments-service/  schedules, appointments, clinical notes → appointments_db
@@ -35,6 +35,69 @@ npm run typecheck
 npm test
 npm run dev -w services/edge-gateway
 ```
+
+Host commands require Node.js **>=22.18** and npm. Run `npm run build:packages`
+before starting a service in development. Each service loads the root `.env`;
+the gateway command starts only the gateway, not the other services.
+
+## Local startup
+
+Install Docker Engine/Desktop with Compose v2 (Linux containers). From the repository
+root, copy `.env.example` to `.env` **only if `.env` does not already exist**
+(`Copy-Item .env.example .env` in PowerShell, `cp .env.example .env` in Bash).
+Keep credentials in that ignored local file. Review the database and Keycloak
+credentials, `KEYCLOAK_TEST_PASSWORD`, `KEYCLOAK_USER_ADMIN_SECRET` and Redis
+password/`REDIS_URL` together. Keep the service-name hosts and internal URLs for
+Compose; `KEYCLOAK_ISSUER` must match the URL used to obtain tokens on the host.
+
+```bash
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps -a
+docker compose logs --tail=50 keycloak-seed
+curl http://localhost:3000/health
+```
+
+The default host port is `API_PORT=3000`; PowerShell can also use
+`Invoke-RestMethod http://localhost:3000/health`. Expected: `{"status":"ok"}`.
+Compose starts four PostgreSQL **18** databases, Keycloak, its one-shot user seed,
+Redis and all five HTTP services. SQL schema/seeds run only on **empty database
+volumes**; existing volumes are preserved and are not migrated automatically.
+The seed job should exit with code 0; it does not remain running. Use
+`docker compose logs --tail=50 <service>` to investigate startup failures.
+
+Only the gateway is published to the host by default. It currently serves `/`
+and `/health`, **without a domain proxy**. Check a private service inside Compose:
+
+```bash
+docker compose exec clinics-service node -e "fetch('http://127.0.0.1:' + process.env.API_INTERNAL_PORT + '/health').then(r => r.json()).then(console.log)"
+```
+
+For Postman on the host, create an ignored `.env.compose-demo.yaml` locally:
+
+```yaml
+services:
+  clinics-service:
+    ports: ["127.0.0.1:3001:3000"]
+  users-service:
+    ports: ["127.0.0.1:3002:3000"]
+  appointments-service:
+    ports: ["127.0.0.1:3003:3000"]
+  audit-service:
+    ports: ["127.0.0.1:3004:3000"]
+```
+
+```bash
+docker compose -f docker-compose.yml -f .env.compose-demo.yaml up -d --build
+```
+
+These mappings assume `API_INTERNAL_PORT=3000` and free host ports. Use the same
+`-f` options with subsequent Compose commands. Direct host URLs are then
+`http://localhost:3001` through `http://localhost:3004`, respectively; internal
+service URLs stay unchanged. `/health` is a liveness response, not a database,
+identity or cache readiness test. Authenticated domain calls need fresh Keycloak
+tokens with matching clinic/role claims; see the [API contract](docs/api.md).
+Stop the stack with `docker compose stop` (with the same `-f` options if used).
 
 ## Documentation
 
