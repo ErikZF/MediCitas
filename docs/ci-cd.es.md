@@ -55,6 +55,7 @@ El archivo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) se ejecuta 
    - Ejecuta `npm ci`.
    - Compila los paquetes compartidos (`npm run build:packages`).
    - Verifica tipos en todo el monorepo sin emitir JS (`npm run typecheck`).
+   - Comprueba que los archivos de la semilla de demo se regeneraron después del último cambio a sus datos (`npm run seed:check`, ver [seed-data.es.md](seed-data.es.md)).
 
 2. **`unit-tests` (Pruebas unitarias)**:
    - Ejecuta las pruebas unitarias rápidas de todos los paquetes y microservicios (`npm test`).
@@ -62,6 +63,7 @@ El archivo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) se ejecuta 
 3. **`integration-tests` (Pruebas de base de datos y concurrencia)**:
    - Levanta un contenedor de servicio de **PostgreSQL 18** (`postgres:18-alpine`).
    - Inyecta `TEST_DATABASE_URL: postgres://test:test_password@localhost:5432/postgres`.
+   - Carga los cuatro esquemas y la semilla de demo en sus propias bases, igual que `docker compose up`, para que una semilla que rompe una restricción falle aquí.
    - Levanta también **Redis 7** (`redis:7-alpine`) e inyecta `TEST_REDIS_URL: redis://localhost:6379` para las pruebas de la caché de disponibilidad (E8, I8). Sin esa variable, esas pruebas se saltan.
    - Los tests crean dinámicamente una base de datos desechable (`medicitas_<label>_<pid>`), aplican el esquema real [`database/appointments/init.sql`](../database/appointments/init.sql) con extensiones (`btree_gist`), restricciones de exclusión y políticas RLS.
    - Valida:

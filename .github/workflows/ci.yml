@@ -33,6 +33,9 @@ jobs:
       - name: Run TypeScript typecheck
         run: npm run typecheck
 
+      - name: Check the demo seed matches its data
+        run: npm run seed:check
+
   unit-tests:
     name: Unit Tests
     needs: quality
@@ -96,6 +99,19 @@ jobs:
 
       - name: Build shared packages
         run: npm run build:packages
+
+      - name: Load the demo seed into PostgreSQL 18
+        env:
+          PGHOST: localhost
+          PGUSER: test
+          PGPASSWORD: test_password
+          PGOPTIONS: -c client_min_messages=warning
+        run: |
+          for db in clinics users appointments logs; do
+            psql -d postgres -v ON_ERROR_STOP=1 -qc "CREATE DATABASE seed_${db}"
+            psql -d "seed_${db}" -v ON_ERROR_STOP=1 -q -f "database/${db}/init.sql"
+            psql -d "seed_${db}" -v ON_ERROR_STOP=1 -q -f "database/${db}/seed.sql"
+          done
 
       - name: Run Integration Tests with PostgreSQL and Redis
         env:

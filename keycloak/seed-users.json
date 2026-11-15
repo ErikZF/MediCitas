@@ -97,6 +97,39 @@
       ]
     },
     {
+      "id": "019a0000-0000-7000-8000-000000001016",
+      "username": "reception2.sj",
+      "email": "reception2.sj@medicitas.local",
+      "emailVerified": true,
+      "firstName": "Valeria",
+      "lastName": "Rojas",
+      "enabled": true,
+      "groups": [
+        "/users-MediCitas"
+      ],
+      "realmRoles": [
+        "receptionist"
+      ],
+      "attributes": {
+        "clinic_id": [
+          "019a0000-0000-7000-8000-000000000101"
+        ],
+        "app_user_id": [
+          "019a0000-0000-7000-8000-000000000416"
+        ],
+        "role": [
+          "receptionist"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_TEST_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
       "id": "019a0000-0000-7000-8000-000000001004",
       "username": "dr.mora",
       "email": "laura.mora@medicitas.local",
@@ -169,6 +202,78 @@
       ]
     },
     {
+      "id": "019a0000-0000-7000-8000-000000001009",
+      "username": "dr.arias",
+      "email": "pablo.arias@medicitas.local",
+      "emailVerified": true,
+      "firstName": "Pablo",
+      "lastName": "Arias",
+      "enabled": true,
+      "groups": [
+        "/users-MediCitas"
+      ],
+      "realmRoles": [
+        "professional"
+      ],
+      "attributes": {
+        "clinic_id": [
+          "019a0000-0000-7000-8000-000000000101"
+        ],
+        "app_user_id": [
+          "019a0000-0000-7000-8000-000000000409"
+        ],
+        "professional_id": [
+          "019a0000-0000-7000-8000-000000000504"
+        ],
+        "role": [
+          "professional"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_TEST_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "019a0000-0000-7000-8000-000000001015",
+      "username": "dr.campos",
+      "email": "jorge.campos@medicitas.local",
+      "emailVerified": true,
+      "firstName": "Jorge",
+      "lastName": "Campos",
+      "enabled": false,
+      "groups": [
+        "/users-MediCitas"
+      ],
+      "realmRoles": [
+        "professional"
+      ],
+      "attributes": {
+        "clinic_id": [
+          "019a0000-0000-7000-8000-000000000101"
+        ],
+        "app_user_id": [
+          "019a0000-0000-7000-8000-000000000415"
+        ],
+        "professional_id": [
+          "019a0000-0000-7000-8000-000000000508"
+        ],
+        "role": [
+          "professional"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_TEST_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
       "id": "019a0000-0000-7000-8000-000000001006",
       "username": "admin.curri",
       "email": "admin.curri@medicitas.local",
@@ -202,6 +307,39 @@
       ]
     },
     {
+      "id": "019a0000-0000-7000-8000-000000001008",
+      "username": "reception.curri",
+      "email": "reception.curri@medicitas.local",
+      "emailVerified": true,
+      "firstName": "Karla",
+      "lastName": "Jimenez",
+      "enabled": true,
+      "groups": [
+        "/users-MediCitas"
+      ],
+      "realmRoles": [
+        "receptionist"
+      ],
+      "attributes": {
+        "clinic_id": [
+          "019a0000-0000-7000-8000-000000000102"
+        ],
+        "app_user_id": [
+          "019a0000-0000-7000-8000-000000000408"
+        ],
+        "role": [
+          "receptionist"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_TEST_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
       "id": "019a0000-0000-7000-8000-000000001007",
       "username": "dr.vega",
       "email": "elena.vega@medicitas.local",
@@ -224,6 +362,180 @@
         ],
         "professional_id": [
           "019a0000-0000-7000-8000-000000000503"
+        ],
+        "role": [
+          "professional"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_TEST_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "019a0000-0000-7000-8000-000000001010",
+      "username": "dr.quesada",
+      "email": "mariana.quesada@medicitas.local",
+      "emailVerified": true,
+      "firstName": "Mariana",
+      "lastName": "Quesada",
+      "enabled": true,
+      "groups": [
+        "/users-MediCitas"
+      ],
+      "realmRoles": [
+        "professional"
+      ],
+      "attributes": {
+        "clinic_id": [
+          "019a0000-0000-7000-8000-000000000102"
+        ],
+        "app_user_id": [
+          "019a0000-0000-7000-8000-000000000410"
+        ],
+        "professional_id": [
+          "019a0000-0000-7000-8000-000000000505"
+        ],
+        "role": [
+          "professional"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_TEST_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "019a0000-0000-7000-8000-000000001011",
+      "username": "admin.heredia",
+      "email": "admin.heredia@medicitas.local",
+      "emailVerified": true,
+      "firstName": "Gabriela",
+      "lastName": "Soto",
+      "enabled": true,
+      "groups": [
+        "/users-MediCitas"
+      ],
+      "realmRoles": [
+        "clinic_admin"
+      ],
+      "attributes": {
+        "clinic_id": [
+          "019a0000-0000-7000-8000-000000000103"
+        ],
+        "app_user_id": [
+          "019a0000-0000-7000-8000-000000000411"
+        ],
+        "role": [
+          "clinic_admin"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_TEST_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "019a0000-0000-7000-8000-000000001012",
+      "username": "reception.heredia",
+      "email": "reception.heredia@medicitas.local",
+      "emailVerified": true,
+      "firstName": "Luis",
+      "lastName": "Herrera",
+      "enabled": true,
+      "groups": [
+        "/users-MediCitas"
+      ],
+      "realmRoles": [
+        "receptionist"
+      ],
+      "attributes": {
+        "clinic_id": [
+          "019a0000-0000-7000-8000-000000000103"
+        ],
+        "app_user_id": [
+          "019a0000-0000-7000-8000-000000000412"
+        ],
+        "role": [
+          "receptionist"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_TEST_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "019a0000-0000-7000-8000-000000001013",
+      "username": "dr.chaves",
+      "email": "ricardo.chaves@medicitas.local",
+      "emailVerified": true,
+      "firstName": "Ricardo",
+      "lastName": "Chaves",
+      "enabled": true,
+      "groups": [
+        "/users-MediCitas"
+      ],
+      "realmRoles": [
+        "professional"
+      ],
+      "attributes": {
+        "clinic_id": [
+          "019a0000-0000-7000-8000-000000000103"
+        ],
+        "app_user_id": [
+          "019a0000-0000-7000-8000-000000000413"
+        ],
+        "professional_id": [
+          "019a0000-0000-7000-8000-000000000506"
+        ],
+        "role": [
+          "professional"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_TEST_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "019a0000-0000-7000-8000-000000001014",
+      "username": "dr.alfaro",
+      "email": "paula.alfaro@medicitas.local",
+      "emailVerified": true,
+      "firstName": "Paula",
+      "lastName": "Alfaro",
+      "enabled": true,
+      "groups": [
+        "/users-MediCitas"
+      ],
+      "realmRoles": [
+        "professional"
+      ],
+      "attributes": {
+        "clinic_id": [
+          "019a0000-0000-7000-8000-000000000103"
+        ],
+        "app_user_id": [
+          "019a0000-0000-7000-8000-000000000414"
+        ],
+        "professional_id": [
+          "019a0000-0000-7000-8000-000000000507"
         ],
         "role": [
           "professional"

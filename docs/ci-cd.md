@@ -55,6 +55,7 @@ flowchart TD
    - Runs `npm ci`.
    - Builds the shared packages (`npm run build:packages`).
    - Type-checks the whole monorepo without emitting JS (`npm run typecheck`).
+   - Checks that the demo seed files were regenerated after the last change to their data (`npm run seed:check`, see [seed-data.md](seed-data.md)).
 
 2. **`unit-tests`**:
    - Runs the fast unit tests of every package and microservice (`npm test`).
@@ -62,6 +63,7 @@ flowchart TD
 3. **`integration-tests` (database and concurrency tests)**:
    - Starts a **PostgreSQL 18** service container (`postgres:18-alpine`).
    - Injects `TEST_DATABASE_URL: postgres://test:test_password@localhost:5432/postgres`.
+   - Loads the four schemas and the demo seed into their own databases, as `docker compose up` does, so a seed that breaks a constraint fails here.
    - Also starts **Redis 7** (`redis:7-alpine`) and injects `TEST_REDIS_URL: redis://localhost:6379` for the availability cache tests (E8, I8). Without that variable those tests are skipped.
    - The tests create a throwaway database on the fly (`medicitas_<label>_<pid>`) and apply the real schema [`database/appointments/init.sql`](../database/appointments/init.sql), with its extensions (`btree_gist`), exclusion constraints and RLS policies.
    - It checks:
