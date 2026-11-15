@@ -70,3 +70,34 @@ Use `Z` or negative offsets for range variables in query strings; encode a posit
 The [REST Client walkthrough](../requests/demo.http) is an alternative client,
 not a prerequisite. Expected responses are documented in the [contract](../docs/api.md);
 this environment template alone does not establish a successful full-stack run.
+
+## Appointment and audit walkthrough
+
+After health and seeded catalog/patient reads, use folders 05-09:
+
+1. Read working hours/blocks and availability. Set `startsA` to a future slot on
+   `dayFrom`, and `replacementStartsA` to a different free, non-overlapping slot.
+   Both patients must belong to Clinic 1; `conflictPatientId` must be free then.
+2. Reserve A once: **201** captures `appointmentAId`. Check availability again.
+   Before releasing A, request the same professional/start for the other patient:
+   **409 `slot_taken`**. The request with extra `durationMinutes` demonstrates
+   **422 `invalid_request`**. Keep `startsA` unchanged and future throughout.
+3. Reschedule A: **201** captures `replacementAId`. Cancel the replacement:
+   **200 cancelled**; repeat cancellation: **409 `invalid_transition`**.
+   Verify the original slot is available again while it is still future.
+4. Separately inspect `startedAppointmentId`: it must be booked, already started
+   and owned by `dr.mora`. Only then mark it attended and create/read its note.
+   Seed 804 starts on 2026-11-12; existing volumes may already have changed its state.
+   This sequence needs a prepared appointment for each rerun. Never use cancelled A.
+5. Query history, agendas and counts. Audit demonstrates missing token **401**,
+   reception **403**, and clinic administrator **200**, with optional AND filters.
+   A range containing seed event times can return rows; `[]` is also valid.
+
+New contact/note events queue in their owner's outbox. The N10 relay to `logs_db`
+is pending, so these events will not appear in audit queries through this collection.
+The sequential 409 example does not replace the automated concurrent race proof.
+
+Validation for J5: JSON, official Postman v2.1 schema, variables, script syntax,
+routes/bodies and links checked statically. No HTTP requests were executed: this
+checkout had no `.env` and no running Compose project. Run the selected requests
+against a prepared stack before presenting the demo; status assertions are expectations.

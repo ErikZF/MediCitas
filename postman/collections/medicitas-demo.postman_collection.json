@@ -623,6 +623,37 @@
             }
           ],
           "response": []
+        },
+        {
+          "name": "RF4 - Assign demo service to demo professional",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{appointmentsUrl}}/professionals/{{demoProfessionalId}}/services/{{demoServiceId}}",
+            "description": "Optional. Requires both optional creations before cleanup. Specialties must match. Idempotent assignment; seeded booking association already exists.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
         }
       ]
     },
@@ -784,6 +815,982 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "05 - Schedule and availability",
+      "description": "Use Clinic 1 seeds. Set dayFrom/dayTo in the clinic zone and rangeFrom/rangeTo as instants. Choose startsA and replacementStartsA from free future non-overlapping slots. Availability is not a reservation.",
+      "item": [
+        {
+          "name": "RF5 - Read working hours",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/professionals/{{professionalId}}/working-hours",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{professionalToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF6 - Read blocks in range",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/professionals/{{professionalId}}/blocks?from={{rangeFrom}}&to={{rangeTo}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF8 - Availability by service",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/availability?serviceId={{serviceId}}&from={{dayFrom}}&to={{dayTo}}",
+            "description": "Inclusive range of at most 31 clinic-local dates; returns professionals/days with slots.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF7 - Availability for professional and day",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/availability/professionals/{{professionalId}}?serviceId={{serviceId}}&date={{dayFrom}}",
+            "description": "Pick startsA on dayFrom and a second free non-overlapping future replacementStartsA. Copy slots manually; no booking is automatic.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Slots array\", () => pm.expect(pm.response.json().slots).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "06 - Booking 201 / 409 / 422 and lifecycle",
+      "description": "Run once, in order. Requires a future free startsA on dayFrom, active seeded service/association, both valid patients, and a different free replacementStartsA. Keep startsA unchanged until after conflict/invalid-input calls. Sequential conflict demonstration is not the automated concurrency race.",
+      "item": [
+        {
+          "name": "01 - RF9 reserve A: 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentsUrl}}/appointments",
+            "description": "Send once. Captures appointmentAId only after 201. No Idempotency-Key support; never retry to recover an ID.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"professionalId\": \"{{professionalId}}\",\n  \"patientId\": \"{{patientId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"startsAt\": \"{{startsA}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"State: booked\", () => pm.expect(pm.response.json().status).to.eql(\"booked\"));",
+                  "if (pm.response.code === 201) {",
+                  "  const id = pm.response.json().appointmentId;",
+                  "  pm.test(\"appointmentId is a UUID\", () => pm.expect(id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));",
+                  "  if (typeof id === \"string\" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) pm.environment.set(\"appointmentAId\", id);",
+                  "  else pm.environment.unset(\"appointmentAId\");",
+                  "} else {",
+                  "  pm.environment.unset(\"appointmentAId\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "02 - Read A",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/appointments/{{appointmentAId}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"State: booked\", () => pm.expect(pm.response.json().status).to.eql(\"booked\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "03 - Availability after booking",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/availability/professionals/{{professionalId}}?serviceId={{serviceId}}&date={{dayFrom}}",
+            "description": "Same dayFrom/professional/service as before. With no other writers, startsA must now be absent.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Booked start removed\", () => { const start = Date.parse(pm.environment.get(\"startsA\")); pm.expect(Number.isFinite(start)).to.eql(true); pm.expect(pm.response.json().slots.some(s => Date.parse(s.startsAt) === start)).to.eql(false); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "04 - RF9 occupied professional slot: 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentsUrl}}/appointments",
+            "description": "After A=201, before reschedule/cancel, while startsA remains future. conflictPatientId must be a different valid patient with no overlapping booking, isolating the professional constraint.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"professionalId\": \"{{professionalId}}\",\n  \"patientId\": \"{{conflictPatientId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"startsAt\": \"{{startsA}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Error code: slot_taken\", () => pm.expect(pm.response.json().code).to.eql(\"slot_taken\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "05 - RF9 forbidden duration field: 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentsUrl}}/appointments",
+            "description": "Strict booking schema rejects client durationMinutes before dependency calls. Requires valid receptionist Bearer; duration always comes from catalog.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"professionalId\": \"{{professionalId}}\",\n  \"patientId\": \"{{patientId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"startsAt\": \"{{startsA}}\",\n  \"durationMinutes\": 60\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"Error code: invalid_request\", () => pm.expect(pm.response.json().code).to.eql(\"invalid_request\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "06 - RF10 reschedule A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentsUrl}}/appointments/{{appointmentAId}}/reschedule",
+            "description": "A must still be booked and future; replacement slot must be free. Old A becomes rescheduled. Continue with replacementAId.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startsAt\": \"{{replacementStartsA}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"State: booked\", () => pm.expect(pm.response.json().status).to.eql(\"booked\"));",
+                  "pm.test(\"Replaces A\", () => pm.expect(pm.response.json().rescheduledFromId).to.eql(pm.environment.get(\"appointmentAId\")));",
+                  "if (pm.response.code === 201) {",
+                  "  const id = pm.response.json().appointmentId;",
+                  "  pm.test(\"appointmentId is a UUID\", () => pm.expect(id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));",
+                  "  if (typeof id === \"string\" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) pm.environment.set(\"replacementAId\", id);",
+                  "  else pm.environment.unset(\"replacementAId\");",
+                  "} else {",
+                  "  pm.environment.unset(\"replacementAId\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "07 - RF11 cancel replacement",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentsUrl}}/appointments/{{replacementAId}}/cancel",
+            "description": "Replacement must still be booked and future. Final state; cannot later become attended.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"J5 demo cancellation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"State: cancelled\", () => pm.expect(pm.response.json().status).to.eql(\"cancelled\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "08 - Read cancelled replacement",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/appointments/{{replacementAId}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"State: cancelled\", () => pm.expect(pm.response.json().status).to.eql(\"cancelled\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "09 - RF13 reject repeat cancellation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentsUrl}}/appointments/{{replacementAId}}/cancel",
+            "description": "Run only after successful cancellation; confirms final-state rejection.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"J5 repeat cancellation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Error code: invalid_transition\", () => pm.expect(pm.response.json().code).to.eql(\"invalid_transition\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "10 - Availability after releasing A",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/availability/professionals/{{professionalId}}?serviceId={{serviceId}}&date={{dayFrom}}",
+            "description": "With no other writers, the original startsA should reappear after rescheduling/cancellation, provided it is still future.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Original start available again\", () => { const start = Date.parse(pm.environment.get(\"startsA\")); pm.expect(Number.isFinite(start)).to.eql(true); pm.expect(pm.response.json().slots.some(s => Date.parse(s.startsAt) === start)).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "07 - Started appointment and clinical note (separate)",
+      "description": "Uses startedAppointmentId, not A or its cancelled replacement. Seed 804 is booked for dr.mora on 2026-11-12. Inspect current state first; this sequence runs only once per prepared appointment. Stop if already final or a note already exists. Note events remain in outbox until N10 is implemented.",
+      "item": [
+        {
+          "name": "01 - Verify already-started own booked appointment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/appointments/{{startedAppointmentId}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{professionalToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"State: booked\", () => pm.expect(pm.response.json().status).to.eql(\"booked\"));",
+                  "pm.test(\"Already started\", () => pm.expect(Date.parse(pm.response.json().startsAt)).to.be.at.most(Date.now()));",
+                  "pm.test(\"Own professional\", () => pm.expect(pm.response.json().professionalId).to.eql(pm.environment.get(\"professionalId\")));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "02 - RF12 mark attended",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentsUrl}}/appointments/{{startedAppointmentId}}/outcome",
+            "description": "Only after verified booked, startsAt <= now, and own professional. Before start: 422 appointment_not_started; final state: 409 invalid_transition.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{professionalToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outcome\": \"attended\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"State: attended\", () => pm.expect(pm.response.json().status).to.eql(\"attended\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "03 - RF15 create clinical note",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentsUrl}}/appointments/{{startedAppointmentId}}/note",
+            "description": "Requires attended appointment owned by dr.mora and no existing note. 409 note_exists on repeat. Produces AuditRecorded in appointments outbox.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{professionalToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Synthetic J5 demo note; no real patient information.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "04 - RF15 read clinical note",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/appointments/{{startedAppointmentId}}/note",
+            "description": "Only its professional can read the note; successful read also queues AuditRecorded.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{professionalToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "08 - Operational queries",
+      "description": "Read current Clinic 1 data. rangeFrom/rangeTo filter appointment starts for counts; date is clinic-local for agenda. No clinical note/contact text in these responses.",
+      "item": [
+        {
+          "name": "RF16 - Patient appointment history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/patients/{{patientId}}/appointments",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{professionalToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF20 - Clinic daily agenda",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/agenda?date={{dayFrom}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF20 - Own professional daily agenda",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/agenda/professionals/{{professionalId}}?date={{dayFrom}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{professionalToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF21 - Appointment counts by status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/appointments/counts?from={{rangeFrom}}&to={{rangeTo}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "09 - Audit and authorization",
+      "description": "Audit query is clinic_admin only. Seeded audit rows are readable, but do not demonstrate delivery of new note/contact events: N10 audit relay is still pending. Use event-time range and domain auditUserId, not Keycloak sub.",
+      "item": [
+        {
+          "name": "RF19 - Missing Bearer: 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{auditUrl}}/audit/logs",
+            "description": "No authentication inherited or sent.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF19 - Reception denied: 403",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{auditUrl}}/audit/logs",
+            "description": "Needs valid unexpired receptionist token; expired/malformed tokens give 401 instead.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"Error code: forbidden\", () => pm.expect(pm.response.json().code).to.eql(\"forbidden\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF19 - Clinic audit log",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{auditUrl}}/audit/logs",
+            "description": "Returns all visible events; empty array is valid. No pagination.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Audit array\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF19 - Filter by user, patient and event time",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{auditUrl}}/audit/logs?userId={{auditUserId}}&patientId={{patientId}}&from={{rangeFrom}}&to={{rangeTo}}",
+            "description": "All filters combine with AND; occurredAt in [from,to). Choose a range covering seed events for a nonempty result; [] is valid.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Audit array\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
                 ]
               }
             }

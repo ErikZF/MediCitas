@@ -70,3 +70,34 @@ positivo como `%2B`. RF8 admite hasta 31 fechas incluyendo ambos extremos.
 El [recorrido REST Client](../requests/demo.http) es una alternativa de cliente,
 no un prerrequisito. El [contrato](../docs/api.es.md) documenta respuestas esperadas;
 esta plantilla de entorno por sí sola no demuestra una ejecución con la pila completa.
+
+## Recorrido de citas y auditoría
+
+Después de salud y lecturas de catálogo/paciente semilla, use las carpetas 05-09:
+
+1. Consulte horarios/bloqueos y disponibilidad. Defina `startsA` con un espacio futuro
+   de `dayFrom` y `replacementStartsA` con otro libre sin solape. Ambos pacientes
+   deben pertenecer a clínica 1; `conflictPatientId` debe estar libre en ese intervalo.
+2. Reserve A una vez: **201** captura `appointmentAId`. Consulte disponibilidad otra vez.
+   Antes de liberar A, pida el mismo profesional/inicio para el otro paciente:
+   **409 `slot_taken`**. La petición con `durationMinutes` extra demuestra
+   **422 `invalid_request`**. Conserve `startsA` sin cambios y futuro durante esos pasos.
+3. Reprograme A: **201** captura `replacementAId`. Cancele el reemplazo:
+   **200 cancelled**; repita la cancelación: **409 `invalid_transition`**.
+   Compruebe que el espacio original vuelva a estar libre mientras siga siendo futuro.
+4. Por separado revise `startedAppointmentId`: debe estar booked, ya iniciada y ser
+   de `dr.mora`. Solo entonces márquela atendida y cree/lea su nota. La semilla 804
+   inicia el 2026-11-12; los volúmenes existentes pueden tener otro estado actual.
+   Cada repetición necesita una cita preparada. Nunca use A cancelada.
+5. Consulte historial, agendas y conteos. Auditoría muestra sin token **401**,
+   recepción **403** y administrador de clínica **200**, con filtros AND opcionales.
+   Un rango con fechas de eventos semilla puede devolver filas; `[]` también es válido.
+
+Los eventos nuevos de contacto/nota quedan en el outbox de su dueño. Falta el relay
+N10 a `logs_db`, así que esos eventos no aparecerán en auditoría mediante esta colección.
+El ejemplo secuencial de 409 no sustituye la prueba automatizada de carrera concurrente.
+
+Validación J5: revisión estática de JSON, esquema oficial Postman v2.1, variables,
+sintaxis de scripts, rutas/bodies y enlaces. No se ejecutaron peticiones HTTP: este
+checkout no tenía `.env` ni proyecto Compose corriendo. Ejecute las peticiones elegidas
+contra una pila preparada antes de presentar; las aserciones de estado son expectativas.
