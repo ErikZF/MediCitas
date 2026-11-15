@@ -17,7 +17,7 @@ flowchart TD
     Service --> Auth["Verificación JWT -> TenantContext (clinicId, userId, role, professionalId)"]
     Auth --> Tx["withTenantTx() (packages/db/src/tenant-tx.ts)"]
     Tx --> GUC["SELECT app_set_session_context(..., p_is_local := true)"]
-    GUC --> Role["SET LOCAL ROLE medicitas_app (sin BYPASSRLS)"]
+    GUC --> Role["SET LOCAL ROLE db_admin / db_receptionist / db_professional (según el rol del token, sin BYPASSRLS)"]
     Role --> RLS["PostgreSQL 18 (ENABLE + FORCE ROW LEVEL SECURITY)"]
 
     Service --> Cache["Clave Redis: avail:v1:{clinic:professional}:g<gen>:v<ver>:<date>"]
@@ -46,7 +46,7 @@ flowchart TD
 - Todas las consultas se ejecutan mediante `withTenantTx(db, ctx, fn, options)` dentro de una transacción PostgreSQL (`READ COMMITTED` por defecto):
   1. Ejecuta `SELECT app_set_session_context(clinicId, userId, role, professionalId, true)`, configurando `app.current_clinic_id`, `app.current_user_id`, `app.current_role` y `app.current_professional_id` con `is_local = true`.
   2. Opcionalmente aplica `statement_timeout` local a la transacción.
-  3. Ejecuta `SET LOCAL ROLE medicitas_app` (sin `BYPASSRLS`).
+  3. Ejecuta `SET LOCAL ROLE` con el rol de base del actor (`MEDICITAS_DB_ROLES`: `db_admin`, `db_receptionist` o `db_professional`, ninguno con `BYPASSRLS`); ver [database.es.md](database.es.md#roles-de-base-con-menor-privilegio).
 - Al estar ligados exclusivamente a la transacción (`SET LOCAL`), los pools de conexiones (incluido PgBouncer en modo transacción) nunca heredan contexto de un tenant anterior.
 
 ### 2.4 Row-Level Security en PostgreSQL 18 y claves preparadas para sharding

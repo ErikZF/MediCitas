@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { hasPermission } from '@medicitas/auth';
-import { MEDICITAS_APP_ROLE, withTenantTx, type Database } from '@medicitas/db';
+import { MEDICITAS_DB_ROLES, withTenantTx, type Database } from '@medicitas/db';
 import { professionalService } from '../../db/schema.ts';
 import { ForbiddenError, ValidationError } from '../../domain/errors.ts';
 import { tenantOf } from '../../http/context.ts';
@@ -43,7 +43,7 @@ export function createServiceAssociationRouter({ db, catalog, directory }: Assoc
       .onConflictDoUpdate({
         target: [professionalService.clinicId, professionalService.professionalId, professionalService.serviceId],
         set: { specialtyId: service.specialtyId },
-      }), { dbRoles: MEDICITAS_APP_ROLE });
+      }), { dbRoles: MEDICITAS_DB_ROLES });
     res.status(204).end();
   });
   return router;

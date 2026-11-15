@@ -20,8 +20,8 @@ export interface TenantContext {
 
 /**
  * PostgreSQL role activated with SET LOCAL ROLE.
- * A single name applies to every application role (MediCitas uses medicitas_app);
- * a map allows one database role per application role.
+ * A single name applies to every application role; a map gives one database role per
+ * application role. The services use MEDICITAS_DB_ROLES, the map below.
  */
 export type DbRoleMap = Partial<Record<AppRole, string>>;
 export type DbRoles = string | DbRoleMap;
@@ -33,6 +33,7 @@ export const DB_ADMIN_ROLE = 'db_admin';
 export const DB_RECEPTIONIST_ROLE = 'db_receptionist';
 export const DB_PROFESSIONAL_ROLE = 'db_professional';
 
+/** One database role per actor, aligned with the permission matrix (core module 5). */
 export const MEDICITAS_DB_ROLES: Record<AppRole, string> = {
   platform_admin: DB_ADMIN_ROLE,
   clinic_admin: DB_ADMIN_ROLE,

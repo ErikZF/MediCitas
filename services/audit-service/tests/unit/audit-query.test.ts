@@ -20,7 +20,7 @@ test('rejects equal or reversed absolute instants before opening a transaction',
   assert.equal(transaction.mock.calls.length, 0);
 });
 
-test('opens a read-only tenant transaction with the application database role', async () => {
+test('opens a read-only tenant transaction as db_admin, the database role of clinic_admin', async () => {
   // Actual Drizzle and withTenantTx; only the pg driver is replaced to record SQL.
   const query = vi.fn(async (_statement: { text: string }, _params?: unknown[]) => ({ rows: [] }));
   const db = drizzle({ client: { query } as unknown as pg.Client }) as Database;
@@ -29,5 +29,5 @@ test('opens a read-only tenant transaction with the application database role', 
   assert.match(statements[0]!.sql, /read committed.*read only/);
   assert.deepEqual(statements.find((s) => s.sql.includes('app_set_session_context'))!.params,
     [ctx.clinicId, ctx.userId, ctx.role, null]);
-  assert.ok(statements.some((s) => s.sql === 'set local role "medicitas_app"'));
+  assert.ok(statements.some((s) => s.sql === 'set local role "db_admin"'));
 });

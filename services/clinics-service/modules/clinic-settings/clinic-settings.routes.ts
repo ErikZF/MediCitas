@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq } from 'drizzle-orm';
 import { extractTenantContext, hasPermission } from '@medicitas/auth';
-import { MEDICITAS_APP_ROLE, withTenantTx, type Database } from '@medicitas/db';
+import { MEDICITAS_DB_ROLES, withTenantTx, type Database } from '@medicitas/db';
 import { clinic } from '../../db/schema.ts';
 import { CatalogError } from '../service-catalog/service-catalog.errors.ts';
 
@@ -15,7 +15,7 @@ export function createClinicSettingsRouter(deps: { db: Database }): Router {
     const [row] = await withTenantTx(deps.db, ctx, (tx) => tx
       .select({ clinicId: clinic.clinicId, timeZone: clinic.timeZone })
       .from(clinic).where(eq(clinic.clinicId, ctx.clinicId!)),
-    { dbRoles: MEDICITAS_APP_ROLE, accessMode: 'read only' });
+    { dbRoles: MEDICITAS_DB_ROLES, accessMode: 'read only' });
     if (!row) throw new CatalogError(404);
     res.json(row);
   });

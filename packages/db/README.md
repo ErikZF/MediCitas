@@ -13,7 +13,7 @@ It solves three things no service should reimplement:
 ## Usage in a service
 
 ```ts
-import { createDatabase, MEDICITAS_APP_ROLE, readDbConfig, withTenantTx, type TenantContext } from '@medicitas/db';
+import { createDatabase, MEDICITAS_DB_ROLES, readDbConfig, withTenantTx, type TenantContext } from '@medicitas/db';
 
 const { db } = createDatabase(readDbConfig('DB_APPOINTMENTS', 'appointments-service'), {
   onIdleClientError: () => logger.error('Idle database client failed.'),
@@ -29,7 +29,7 @@ const ctx: TenantContext = {
 
 const notes = await withTenantTx(db, ctx, async (tx) => {
   // queries with tx...
-}, { dbRoles: MEDICITAS_APP_ROLE });
+}, { dbRoles: MEDICITAS_DB_ROLES });   // the database role of the actor
 ```
 
 When a query violates a constraint, `withTenantTx` throws a `DbError` with a `status`, so the shared `errorHandler` already answers with the right code. For example, `no_overlap_professional` becomes **409 `slot_taken`**.
@@ -40,7 +40,7 @@ When a query violates a constraint, `withTenantTx` throws a `DbError` with a `st
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL READ COMMITTED;   -- explicit, always
 SELECT app_set_session_context($1::uuid, $2::uuid, $3::text, $4::uuid, true);  -- true = this transaction only
-SET LOCAL ROLE "medicitas_app";                   -- only when dbRoles is given
+SET LOCAL ROLE "db_receptionist";                 -- the actor's role, only when dbRoles is given
 -- ...the service's queries...
 COMMIT;
 ```
@@ -64,7 +64,7 @@ A context that breaks these rules throws `InvalidTenantContextError` (500) befor
 - **Only SQL inside `withTenantTx`.** A deadlock reruns the whole function, so an HTTP call or a Redis write inside it would run twice. Do external work before the transaction or after it commits.
 - **No session-level settings.** Never `SET` without `LOCAL`, `set_config(..., false)`, `app_reset_session_context()`, `LISTEN/NOTIFY` or session advisory locks. Behind PgBouncer in transaction mode, the next request would inherit this clinic. The integration tests check that nothing survives a commit or a rollback.
 - **No named prepared statements** (`.prepare('name')`) while PgBouncer runs without `max_prepared_statements`.
-- **The connection user must be able to assume the role.** A superuser can; any other login needs `GRANT medicitas_app TO <login>;`. It must not have `BYPASSRLS`.
+- **The connection user must be able to assume the roles.** `MEDICITAS_DB_ROLES` maps `clinic_admin` and `platform_admin` to `db_admin`, `receptionist` to `db_receptionist` and `professional` to `db_professional` (one string instead of a map uses the same role for everyone). A superuser or the schema owner can switch to them; any other login needs `GRANT db_admin, db_receptionist, db_professional TO <login>;`. It must not have `BYPASSRLS`.
 - **Service-specific constraint errors:** `constraintErrors` gives meaning to new constraints, for example `{ patient_clinic_id_identification_key: { status: 409, code: 'patient_exists', message: '...' } }`.
 
 ## Environment variables

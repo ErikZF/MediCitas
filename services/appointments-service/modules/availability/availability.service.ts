@@ -11,7 +11,7 @@
 //   2. slotsFromWindows: the start times that fit the service duration.
 
 import { and, eq, gt, inArray, lt } from 'drizzle-orm';
-import { MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext, type Transaction } from '@medicitas/db';
+import { MEDICITAS_DB_ROLES, withTenantTx, type Database, type TenantContext, type Transaction } from '@medicitas/db';
 import { appointment, professionalService, scheduleBlock, workingHours } from '../../db/schema.ts';
 import { daysInRange, freeWindows, slotsFromWindows, type Interval, type Slot } from '../../domain/availability.ts';
 import { MAX_APPOINTMENT_MS } from '../../domain/appointment-bounds.ts';
@@ -57,7 +57,7 @@ export interface ServiceAvailabilityDto {
   professionals: Array<{ professionalId: string; days: DaySlotsDto[] }>;
 }
 
-const asApp = { dbRoles: MEDICITAS_APP_ROLE } as const;
+const asActor = { dbRoles: MEDICITAS_DB_ROLES } as const;
 
 /** professionalId -> date -> free windows. */
 type FreeWindowsByDay = Map<string, Map<string, Interval[]>>;
@@ -154,7 +154,7 @@ async function resolveWindows(
       const ids = [...new Set(lookup.misses.map((m) => m.professionalId))];
       const missingDays = [...new Set(lookup.misses.map((m) => m.date))].sort();
       return loadFreeWindows(tx, ids, missingDays, timeZone);
-    }, asApp);
+    }, asActor);
   }
 
   const result: FreeWindowsByDay = new Map(professionalIds.map((id) => [id, new Map()]));
@@ -216,7 +216,7 @@ export async function getServiceAvailability(
 
   const offering = await withTenantTx(deps.db, ctx, (tx) => tx.select({ professionalId: professionalService.professionalId })
     .from(professionalService)
-    .where(and(eq(professionalService.serviceId, query.serviceId), eq(professionalService.specialtyId, service.specialtyId))), asApp);
+    .where(and(eq(professionalService.serviceId, query.serviceId), eq(professionalService.specialtyId, service.specialtyId))), asActor);
   const windows = offering.length === 0
     ? new Map() as FreeWindowsByDay
     : await resolveWindows(deps, ctx, offering.map((row) => row.professionalId), days, service.timeZone);

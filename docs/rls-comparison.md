@@ -52,6 +52,11 @@ Times are the median of 7 runs on a 2 vCPU container with PostgreSQL 16 (Compose
 the plans are of the same kind). Buffers are 8 KB pages: they show the work, the time its
 cost on that machine. The script also checks that every variant returns the same rows.
 
+The services now run each request as the database role of its actor (`db_admin`,
+`db_receptionist`, `db_professional`; see [database.md](database.md#least-privilege-database-roles)).
+The policies apply to every role alike, so the plans and costs measured as `medicitas_app`
+are the ones they get.
+
 ## Isolation
 
 [`tests/integration/rls-vs-column.test.ts`](../services/appointments-service/tests/integration/rls-vs-column.test.ts)

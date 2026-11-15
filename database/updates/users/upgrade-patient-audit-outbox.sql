@@ -18,14 +18,16 @@ ALTER TABLE public.outbox FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS outbox_insert_policy ON public.outbox;
 CREATE POLICY outbox_insert_policy ON public.outbox
-    FOR INSERT TO medicitas_app
+    FOR INSERT TO medicitas_app, db_admin, db_receptionist, db_professional
     WITH CHECK (
         clinic_id = app_current_clinic_id()
         AND app_current_role()
             IN ('clinic_admin', 'receptionist', 'professional')
     );
 
-REVOKE ALL ON public.outbox FROM PUBLIC, medicitas_app;
-GRANT INSERT ON public.outbox TO medicitas_app;
+-- Each database role of the matrix (db_admin, db_receptionist, db_professional)
+-- records the audit events of what it does; none of them can read or change the queue.
+REVOKE ALL ON public.outbox FROM PUBLIC, medicitas_app, db_admin, db_receptionist, db_professional;
+GRANT INSERT ON public.outbox TO medicitas_app, db_admin, db_receptionist, db_professional;
 
 COMMIT;

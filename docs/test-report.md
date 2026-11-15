@@ -59,9 +59,9 @@ Stage 1, 2026-11-15, on the branch that adds this report:
 | `services/edge-gateway` | 40 | 0 | 0 |
 | `services/clinics-service` | 7 | 0 | 0 |
 | `services/users-service` | 15 | 0 | 2 |
-| `services/appointments-service` | 168 | 0 | 0 |
+| `services/appointments-service` | 186 | 0 | 0 |
 | `services/audit-service` | 28 | 0 | 0 |
-| **Total** | **491** | **0** | **2** |
+| **Total** | **509** | **0** | **2** |
 
 The two skipped tests of users-service create users in a disposable Keycloak realm
 (`J2_TEMP_REALM=1`) that only exists on the machine of whoever runs them. What they
@@ -121,6 +121,12 @@ end-to-end stage.
 | **I6** Audit log not modifiable by the application | The application role cannot `UPDATE`, `DELETE` or `TRUNCATE` it (no privilege), and triggers refuse all three even to the table owner | audit `integration/audit-append-only.test.ts`, `integration/audit-relay.test.ts` |
 | **I7** Cancelling or rescheduling frees the slot at once | The slot shows up free in the next query, also when cached | appointments `integration/lifecycle.test.ts`, `integration/availability-cache.test.ts` |
 | **I8** Availability never contradicts the database | Book a listed slot and query again: gone, without waiting for any expiry; interleaved readers and writers; lost invalidations recovered from the outbox; Redis down falls back to PostgreSQL | appointments `integration/availability-cache.test.ts`, `integration/agenda-relay.test.ts`, `unit/agenda-cache.test.ts`; E2E "Redis cache invalidation" |
+
+**Least-privilege database roles** (core module 5): every request runs as the database role
+of its actor. appointments `integration/db-roles.test.ts` checks the privilege matrix of
+each role and that a booking fails when its actor's role loses `INSERT` while the
+administrator's still works; db `integration/tenant-tx.test.ts` checks that reception and
+administration cannot read clinical notes at engine level.
 
 ## Acceptance criteria of the statement
 

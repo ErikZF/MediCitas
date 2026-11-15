@@ -203,11 +203,49 @@ Each table has `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY` activa
 
 ---
 
-### Least Privilege Database Role (`medicitas_app`)
+### Least-privilege database roles
 
-Each database defines an application role `medicitas_app`:
-- It is neither a superuser nor an owner of the schema.
-- In `logs_db`, it only has `SELECT` and `INSERT` permissions (strictly append-only, denying `UPDATE` and `DELETE` at the engine permission level).
+Every request runs as the **database role of its actor**, not as one shared role. The
+services pass `MEDICITAS_DB_ROLES` to `withTenantTx`, which runs `SET LOCAL ROLE` with the
+role that matches the token:
+
+| Actor (token) | Database role |
+| --- | --- |
+| `clinic_admin` | `db_admin` |
+| `receptionist` | `db_receptionist` |
+| `professional` | `db_professional` |
+| `platform_admin` | `db_admin` (RLS gives it only the clinic registry; it sees no clinical data) |
+
+Two more roles are for the background processes, never for a request:
+`medicitas_relay` reads and marks the outboxes, and `medicitas_app` lets the audit relay
+append to `audit_log`. None of these roles is a superuser, owns the schema or has
+`BYPASSRLS`, so RLS applies to all of them.
+
+The grants of each `init.sql` are the permission matrix at engine level:
+
+| Database | `db_admin` | `db_receptionist` | `db_professional` |
+| --- | --- | --- | --- |
+| `clinics_db` | read and write the catalog and the clinic | read | read |
+| `users_db` | users, professionals, patients and specialties; append audit events | read users and professionals; read and write patients; append audit events | read patients, specialties, users and professionals; update its own user and professional; append audit events |
+| `appointments_db` | schedules, blocks, services offered and appointments; **no clinical notes** | read schedules; read, book and change appointments; **no clinical notes, no schedule changes** | its schedule and blocks; read and update appointments (outcome); **read and write clinical notes**; cannot book |
+| `logs_db` | read the audit log | nothing | nothing |
+
+No role can read the outboxes, and the engine refuses to delete an appointment (RLS) or
+to change the audit log (no privilege, and triggers). On top of the grants, RLS decides
+which rows: only the clinic of the token, and for notes only the
+professional who wrote them. So a bug in the code cannot give an actor more than its role.
+
+`SET LOCAL ROLE` lasts only for the transaction, like the session context, so it is safe
+with a connection pool and PgBouncer in transaction mode. The login the services connect
+with must be a member of the roles it switches to; in Compose it is the owner that
+`init.sql` grants them to. For a non-owner login:
+`GRANT db_admin, db_receptionist, db_professional, medicitas_app TO <login>;`.
+
+Tests: `appointments-service/tests/integration/db-roles.test.ts` (the privilege matrix,
+and a booking that fails when its actor's role loses `INSERT` while the administrator's
+still works) and `packages/db/tests/integration/tenant-tx.test.ts`. Existing volumes get
+the grants of `users_db` from `database/updates/users/upgrade-patient-audit-outbox.sql`
+and `upgrade-first-admin.sql` (both repeatable).
 
 ---
 

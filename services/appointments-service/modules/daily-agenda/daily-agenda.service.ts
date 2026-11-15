@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, lt, sql } from 'drizzle-orm';
 import { hasPermission } from '@medicitas/auth';
-import { assertTenantContext, MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
+import { assertTenantContext, MEDICITAS_DB_ROLES, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
 import { appointment } from '../../db/schema.ts';
 import { MAX_APPOINTMENT_MS } from '../../domain/appointment-bounds.ts';
 import { ForbiddenError } from '../../domain/errors.ts';
@@ -63,7 +63,7 @@ export async function getDailyAgenda(
     // Redundant, but bounds the index scan on starts_at from below (domain/appointment-bounds.ts).
     gt(appointment.startsAt, sql`${from} - make_interval(secs => ${MAX_APPOINTMENT_MS / 1000})`),
   )).orderBy(asc(appointment.startsAt), asc(appointment.professionalId), asc(appointment.appointmentId)),
-  { dbRoles: MEDICITAS_APP_ROLE, accessMode: 'read only' });
+  { dbRoles: MEDICITAS_DB_ROLES, accessMode: 'read only' });
 
   return { date, timeZone, professionalId: selectedProfessional ?? null,
     appointments: rows.map((row) => ({ ...row, startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString() })) };

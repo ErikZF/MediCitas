@@ -60,9 +60,9 @@ Etapa 1, 2026-11-15, en la rama que agrega este informe:
 | `services/edge-gateway` | 40 | 0 | 0 |
 | `services/clinics-service` | 7 | 0 | 0 |
 | `services/users-service` | 15 | 0 | 2 |
-| `services/appointments-service` | 168 | 0 | 0 |
+| `services/appointments-service` | 186 | 0 | 0 |
 | `services/audit-service` | 28 | 0 | 0 |
-| **Total** | **491** | **0** | **2** |
+| **Total** | **509** | **0** | **2** |
 
 Las dos pruebas saltadas de users-service crean usuarios en un realm desechable de
 Keycloak (`J2_TEMP_REALM=1`) que solo existe en la máquina de quien las corre. Lo que
@@ -122,6 +122,12 @@ etapa de punta a punta.
 | **I6** La bitácora no se modifica desde la aplicación | El rol de la aplicación no puede hacer `UPDATE`, `DELETE` ni `TRUNCATE` (no tiene el privilegio), y los triggers rechazan los tres incluso al dueño de la tabla | audit `integration/audit-append-only.test.ts`, `integration/audit-relay.test.ts` |
 | **I7** Cancelar o reprogramar libera el espacio de inmediato | El espacio aparece libre en la siguiente consulta, también con caché | appointments `integration/lifecycle.test.ts`, `integration/availability-cache.test.ts` |
 | **I8** La disponibilidad nunca contradice la base | Reservar un espacio listado y volver a consultar: ya no aparece, sin esperar ningún vencimiento; lectores y escritores intercalados; invalidaciones perdidas recuperadas desde el outbox; con Redis caído se lee de PostgreSQL | appointments `integration/availability-cache.test.ts`, `integration/agenda-relay.test.ts`, `unit/agenda-cache.test.ts`; E2E "Redis cache invalidation" |
+
+**Roles de base con menor privilegio** (módulo 5 del núcleo): cada petición corre con el rol
+de base de su actor. appointments `integration/db-roles.test.ts` comprueba la matriz de
+permisos de cada rol y que una reserva falle cuando el rol de su actor pierde `INSERT`
+mientras la del administrador sigue funcionando; db `integration/tenant-tx.test.ts`
+comprueba que recepción y administración no pueden leer notas clínicas en el motor.
 
 ## Criterios de aceptación del enunciado
 

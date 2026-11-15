@@ -9,7 +9,7 @@
 // transaction reads.
 
 import { eq } from 'drizzle-orm';
-import { MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
+import { MEDICITAS_DB_ROLES, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
 import { recordAgendaChange } from '../../db/agenda-outbox.ts';
 import { lockAgendas } from '../../db/locks.ts';
 import { appointment } from '../../db/schema.ts';
@@ -47,7 +47,7 @@ export interface AppointmentDto {
   updatedAt: string;
 }
 
-export const asApp = { dbRoles: MEDICITAS_APP_ROLE } as const;
+export const asActor = { dbRoles: MEDICITAS_DB_ROLES } as const;
 
 export function toAppointmentDto(row: typeof appointment.$inferSelect): AppointmentDto {
   return {
@@ -107,7 +107,7 @@ export async function bookAppointment(deps: BookingDeps, ctx: TenantContext, inp
     if (deps.cache) await recordAgendaChange(tx, ctx, input.professionalId, [slot.date]);
 
     return toAppointmentDto(row!);
-  }, asApp);
+  }, asActor);
 
   // After the COMMIT and before answering 201: from here on, no reader gets the old day (I8).
   await deps.cache?.dayChanged(ctx.clinicId as string, input.professionalId, [slot.date]);
@@ -121,7 +121,7 @@ export async function getAppointment(deps: Pick<BookingDeps, 'db'>, ctx: TenantC
   const row = await withTenantTx(deps.db, ctx, async (tx) => {
     const [found] = await tx.select().from(appointment).where(eq(appointment.appointmentId, appointmentId)).limit(1);
     return found;
-  }, asApp);
+  }, asActor);
   // Another clinic's appointment is invisible through RLS: same answer as one that does not exist.
   if (row === undefined) {
     throw new NotFoundError('Appointment not found.');

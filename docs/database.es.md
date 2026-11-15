@@ -204,11 +204,51 @@ Cada tabla tiene activados `ENABLE ROW LEVEL SECURITY` y `FORCE ROW LEVEL SECURI
 
 ---
 
-### Rol de base con menor privilegio (`medicitas_app`)
+### Roles de base con menor privilegio
 
-Cada base define un rol de aplicación `medicitas_app`:
-- No es superusuario ni dueño del esquema.
-- En `logs_db` solo tiene permisos de `SELECT` e `INSERT` (estrictamente de solo inserción: `UPDATE` y `DELETE` se niegan en los permisos del motor).
+Cada petición corre con el **rol de base de su actor**, no con un rol compartido. Los
+servicios pasan `MEDICITAS_DB_ROLES` a `withTenantTx`, que ejecuta `SET LOCAL ROLE` con el
+rol que corresponde al token:
+
+| Actor (token) | Rol de base |
+| --- | --- |
+| `clinic_admin` | `db_admin` |
+| `receptionist` | `db_receptionist` |
+| `professional` | `db_professional` |
+| `platform_admin` | `db_admin` (RLS solo le deja el registro de clínicas; no ve datos clínicos) |
+
+Hay dos roles más para los procesos de fondo, nunca para una petición:
+`medicitas_relay` lee y marca los outbox, y `medicitas_app` le permite al relay de
+auditoría agregar filas a `audit_log`. Ninguno de estos roles es superusuario, dueño del
+esquema ni tiene `BYPASSRLS`, así que RLS se aplica a todos.
+
+Los permisos de cada `init.sql` son la matriz de permisos a nivel del motor:
+
+| Base | `db_admin` | `db_receptionist` | `db_professional` |
+| --- | --- | --- | --- |
+| `clinics_db` | lee y escribe el catálogo y la clínica | lee | lee |
+| `users_db` | usuarios, profesionales, pacientes y especialidades; agrega eventos de auditoría | lee usuarios y profesionales; lee y escribe pacientes; agrega eventos de auditoría | lee pacientes, especialidades, usuarios y profesionales; actualiza su propio usuario y profesional; agrega eventos de auditoría |
+| `appointments_db` | horarios, bloqueos, servicios ofrecidos y citas; **sin notas clínicas** | lee horarios; lee, reserva y cambia citas; **sin notas clínicas ni cambios de horario** | su horario y sus bloqueos; lee y actualiza citas (desenlace); **lee y escribe notas clínicas**; no reserva |
+| `logs_db` | lee la bitácora | nada | nada |
+
+Ningún rol puede leer los outbox, y el motor rechaza borrar una cita (RLS) o cambiar la
+bitácora (sin el privilegio, y por triggers). Encima de los permisos, RLS decide qué
+filas: solo las de la clínica del token, y en las notas solo las
+del profesional que las escribió. Así, un error en el código no le da a un actor más de
+lo que permite su rol.
+
+`SET LOCAL ROLE` dura solo la transacción, igual que el contexto de sesión, así que es
+seguro con un pool de conexiones y PgBouncer en modo transacción. El usuario con que se
+conectan los servicios debe ser miembro de los roles a los que cambia; en Compose es el
+dueño, al que `init.sql` se los otorga. Para un usuario que no es dueño:
+`GRANT db_admin, db_receptionist, db_professional, medicitas_app TO <login>;`.
+
+Pruebas: `appointments-service/tests/integration/db-roles.test.ts` (la matriz de
+permisos, y una reserva que falla cuando el rol de su actor pierde `INSERT` mientras la
+del administrador sigue funcionando) y `packages/db/tests/integration/tenant-tx.test.ts`.
+Los volúmenes existentes reciben los permisos de `users_db` con
+`database/updates/users/upgrade-patient-audit-outbox.sql` y `upgrade-first-admin.sql`
+(ambos repetibles).
 
 ---
 
