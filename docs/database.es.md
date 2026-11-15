@@ -62,6 +62,23 @@ flowchart TD
     audit_log -.->|patient_id lógico| patient
 ```
 
+### Diagrama entidad-relación
+
+[![Diagrama ER de MediCitas](er-diagram.es.drawio.png)](er-diagram.es.drawio.png)
+
+El modelo físico completo: cada tabla de las cuatro bases con sus columnas, tipos,
+llaves y las restricciones que hace cumplir el motor. La fuente es
+[`er-diagram.drawio`](er-diagram.drawio); se abre en [draw.io](https://app.diagrams.net)
+(tiene una página en inglés y otra en español) y, después de un cambio, se exporta
+otra vez cada página como PNG.
+
+- **Las líneas continuas** son llaves foráneas dentro de una misma base.
+- **Las líneas azules punteadas** son referencias lógicas entre bases: no hay llaves
+  foráneas entre servicios, así que el servicio que escribe la fila valida que el id
+  exista (ver la [sección 3](#3-integridad-referencial-entre-microservicios)).
+- `clinic_id` es la primera columna de la llave primaria de toda tabla de un inquilino.
+  Sus referencias a `clinic` no se dibujan, para que el diagrama se pueda leer.
+
 ---
 
 ## 2. Detalle de cada base

@@ -62,6 +62,22 @@ flowchart TD
     audit_log -.->|logical patient_id| patient
 ```
 
+### Entity-relationship diagram
+
+[![MediCitas ER diagram](er-diagram.drawio.png)](er-diagram.drawio.png)
+
+The full physical model: every table of the four databases with its columns, types,
+keys and the constraints the engine enforces. The source is
+[`er-diagram.drawio`](er-diagram.drawio); open it in [draw.io](https://app.diagrams.net)
+(it has an English and a Spanish page) and export each page again as PNG after a change.
+
+- **Solid lines** are foreign keys inside one database.
+- **Dashed blue lines** are logical references across databases: there is no foreign
+  key between services, so the service that writes the row checks that the id exists
+  (see [section 3](#3-referential-integrity-in-microservices)).
+- `clinic_id` is the first column of every tenant table's primary key. Its references
+  to `clinic` are not drawn, to keep the picture readable.
+
 ---
 
 ## 2. Database Breakdown
