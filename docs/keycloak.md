@@ -145,7 +145,7 @@ docker compose up -d keycloak db_clinics db_users db_appointments db_logs
 - **Administration Console**: `http://localhost:8080`
 - **Realm**: `Sistema_Clinico`
 - **Realm configuration file**: `keycloak/realm-export.json` (auto-imported on startup via `--import-realm`).
-- **Demo users seed**: `keycloak/seed-users.json` (loaded idempotently via `keycloak/seed-users.mjs` and the `keycloak-seed` service using Keycloak Partial Import).
+- **Demo users seed**: `keycloak/seed-users.json`, generated with the SQL seeds from [`database/seed/data.mjs`](../database/seed/data.mjs) (see [seed-data.md](seed-data.md)); loaded idempotently via `keycloak/seed-users.mjs` and the `keycloak-seed` service using Keycloak Partial Import.
 
 ### Required Environment Variables (.env)
 ```ini

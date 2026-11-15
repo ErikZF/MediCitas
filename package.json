@@ -13,7 +13,9 @@
     "build:packages": "npm run build -w packages --if-present",
     "build": "npm run build:packages && npm run build -w services --if-present",
     "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
-    "test": "npm run build:packages && npm run test --workspaces --if-present"
+    "test": "npm run build:packages && npm run test --workspaces --if-present",
+    "seed:generate": "node database/seed/generate.mjs",
+    "seed:check": "node database/seed/generate.mjs --check"
   },
   "engines": {
     "node": ">=22.18"

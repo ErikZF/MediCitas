@@ -119,6 +119,7 @@ Stop the stack with `docker compose stop` (with the same `-f` options if used).
 | Databases and RLS | [docs/database.md](docs/database.md) | [docs/database.es.md](docs/database.es.md) |
 | Multi-tenancy comparison | [docs/database-comparison.md](docs/database-comparison.md) | [docs/database-comparison.es.md](docs/database-comparison.es.md) |
 | Identity with Keycloak | [docs/keycloak.md](docs/keycloak.md) | [docs/keycloak.es.md](docs/keycloak.es.md) |
+| Demo seed data | [docs/seed-data.md](docs/seed-data.md) | [docs/seed-data.es.md](docs/seed-data.es.md) |
 | Concurrency: the last slot | [docs/concurrency.md](docs/concurrency.md) | [docs/concurrency.es.md](docs/concurrency.es.md) |
 | Availability cache | [docs/cache.md](docs/cache.md) | [docs/cache.es.md](docs/cache.es.md) |
 | Indexes and their plans | [docs/indexes.md](docs/indexes.md) | [docs/indexes.es.md](docs/indexes.es.md) |
