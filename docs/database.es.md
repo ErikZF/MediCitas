@@ -2,7 +2,7 @@
 
 [English](database.md) · **Español**
 
-En MediCitas, la persistencia está repartida en 4 bases relacionales independientes (PostgreSQL 18), diseñadas para una arquitectura de microservicios que aplica el patrón **una base por servicio** (*Database-per-Service*).
+MediCitas guarda sus datos en cuatro bases PostgreSQL 18, una por servicio de dominio.
 
 ---
 
@@ -76,8 +76,10 @@ otra vez cada página como PNG.
 - **Las líneas azules punteadas** son referencias lógicas entre bases: no hay llaves
   foráneas entre servicios, así que el servicio que escribe la fila valida que el id
   exista (ver la [sección 3](#3-integridad-referencial-entre-microservicios)).
-- `clinic_id` es la primera columna de la llave primaria de toda tabla de un inquilino.
-  Sus referencias a `clinic` no se dibujan, para que el diagrama se pueda leer.
+- La mayoría de las tablas por clínica usa llaves compuestas que empiezan con
+  `clinic_id`. Hay excepciones: `clinic` y `app_user`, cuya clínica es nula para
+  usuarios de plataforma. Los catálogos globales `role` y `specialty` tienen llaves
+  propias. Las referencias a `clinic` se omiten para facilitar la lectura.
 
 ---
 
@@ -104,6 +106,7 @@ otra vez cada página como PNG.
   - `professional`: perfil del profesional de salud (médicos, terapeutas), enlazado 1:1 con un usuario de la aplicación.
   - `professional_specialty`: relación muchos a muchos (N:M) entre profesionales y especialidades.
   - `patient`: registro de pacientes por clínica (identificación, nombre completo, fecha de nacimiento, datos de contacto).
+  - `outbox`: eventos `AuditRecorded` de escrituras de contacto; la aplicación inserta y el relay de auditoría lee y marca como publicados.
 
 ### 3. Base de appointments (`appointments_db`)
 - **Contenedor:** `postgre_appointments_MediCitas`
@@ -116,8 +119,8 @@ otra vez cada página como PNG.
   - `professional_service`: qué servicios puede atender cada profesional.
   - `appointment`: citas médicas reservadas. Tiene restricciones `EXCLUDE USING gist` que impiden reservas dobles concurrentes, tanto por profesional como por paciente, y triggers para las transiciones de estado.
   - `clinical_note`: registros de consulta médica altamente sensibles (1:1 con citas atendidas).
-  - `outbox`: outbox transaccional para eventos de dominio (`AgendaChanged`, `AppointmentBooked`, etc.) con un índice parcial sobre las filas pendientes (`published_at IS NULL`). Los roles de la aplicación solo pueden hacer `INSERT` en su clínica; `medicitas_relay` tiene `SELECT` y `UPDATE` sobre todas las clínicas.
-  - `idempotency_keys`: guarda por clínica las respuestas asociadas a un `Idempotency-Key` en las peticiones de reserva (E5).
+  - `outbox`: outbox transaccional para eventos de dominio (`AgendaChanged`, `AuditRecorded`) con un índice parcial sobre las filas pendientes (`published_at IS NULL`). Los roles de la aplicación solo pueden hacer `INSERT` en su clínica; `medicitas_relay` tiene `SELECT` y `UPDATE` sobre todas las clínicas.
+  - `idempotency_keys`: esquema reservado para respuestas de idempotencia por clínica. La API no lo lee ni escribe; `Idempotency-Key` no está implementado.
 
 ### 4. Base de logs (`logs_db`)
 - **Contenedor:** `postgre_logs_MediCitas`
@@ -134,8 +137,8 @@ otra vez cada página como PNG.
 En una arquitectura de microservicios con bases aisladas:
 1. **Sin llaves foráneas entre bases:** las restricciones de llave foránea entre bases de distintos servicios se reemplazan por referencias lógicas (`UUID`). Los identificadores generados usan **UUID v7** (RFC 9562) mediante `uuidv7()` nativo para mantener localidad temporal en índices B-tree.
 2. **Índices sobre las referencias lógicas:** las columnas que referencian a otro servicio (por ejemplo `clinic_id`, `professional_id`, `patient_id`) están cubiertas por índices B-tree compuestos que empiezan con `clinic_id`, uno por cada consulta a la que sirven. Cada uno se justifica con su plan de ejecución en [indexes.es.md](indexes.es.md).
-3. **Llaves compuestas listas para sharding:** las tablas por clínica incluyen `clinic_id` en sus llaves primarias, llaves foráneas intra-base, restricciones únicas y restricciones `EXCLUDE USING gist` para permitir particionamiento o sharding horizontal por `clinic_id`.
-4. **Validación de la integridad:** la consistencia de negocio entre servicios se impone en la capa de aplicación, mediante verificaciones transaccionales o mensajería asíncrona.
+3. **Llaves compuestas por clínica:** la mayoría de las tablas por tenant incluye `clinic_id` en sus llaves y referencias locales. Esto facilita una distribución futura por clínica; no hay particionamiento ni sharding configurados.
+4. **Validación de integridad:** los adaptadores HTTP verifican catálogo, pertenencia del paciente y asociaciones del profesional. Estas llamadas y las bases dueñas no comparten transacción: un cambio posterior en otro servicio puede invalidar una comprobación previa. Los relays entregan eventos; no equivalen a llaves foráneas entre bases.
 
 ---
 
@@ -143,13 +146,10 @@ En una arquitectura de microservicios con bases aisladas:
 
 Para imponer un aislamiento estricto entre clínicas (**invariante I5**) y un control de acceso por rol con el menor privilegio (**RF15**, **RF17**, **RF18**, **RF19**), MediCitas implementa **Row-Level Security (RLS)** de forma nativa en PostgreSQL 18.
 
-### Comparación de estrategias de multi-tenancy
+### Estrategia de multi-tenancy
 
-| Estrategia | Ventajas | Desventajas | Decisión en MediCitas |
-| :--- | :--- | :--- | :--- |
-| **Esquema por tenant (`CREATE SCHEMA`)** | Aislamiento físico de tablas por esquema; separación lógica limpia. | Multiplica las migraciones DDL por clínica; complica el enrutamiento de conexiones; mantener los esquemas a escala es caro. | Descartada por la carga operativa y la complejidad de escalar con muchas sedes. |
-| **Columna discriminadora (`clinic_id`) en la aplicación** | Modelo relacional simple; consultas directas. | Si una consulta o el ORM olvida `WHERE clinic_id = ...`, los datos se filtran en silencio (defecto de seguridad en la capa de aplicación). | Se adopta como base relacional, pero no alcanza por sí sola sin una imposición a nivel del motor. |
-| **Row-Level Security (RLS) + columna discriminadora** | **Aislamiento impuesto por el motor:** PostgreSQL intercepta y filtra cada `SELECT`, `INSERT`, `UPDATE` y `DELETE`; impide por completo las fugas aunque se manipulen parámetros o se omitan filtros en la aplicación. | Requiere inicializar variables de contexto de sesión (`SET LOCAL`) en cada transacción. | **Elegida como estándar central de multi-tenancy de MediCitas.** |
+Las bases de servicio comparten tablas por tenant con discriminador `clinic_id` y RLS.
+La [comparación de estrategias](database-comparison.es.md) explica las alternativas y costos.
 
 ---
 
@@ -175,29 +175,38 @@ SELECT app_set_session_context(
 - `app_current_professional_id()`: devuelve el UUID del profesional de salud, si aplica.
 - `app_is_platform_admin()`: devuelve `true` si el rol actual es `platform_admin`.
 
-> [!IMPORTANT]
-> **Denegar por defecto:** cuando una consulta corre sin un contexto de sesión inicializado, estas funciones devuelven `NULL` de forma segura. En consecuencia, los predicados de RLS evalúan a `FALSE`, se devuelven cero filas y se impide el acceso no autorizado.
+Sin contexto, las funciones de identidad devuelven `NULL` y `app_is_platform_admin()`
+devuelve `false`. Las políticas de igualdad por clínica ocultan filas. Los catálogos
+globales permiten lecturas sin contexto de clínica; no es una regla para toda tabla.
 
 ---
 
 ### Matriz de políticas RLS por entidad y rol
 
-Cada tabla tiene activados `ENABLE ROW LEVEL SECURITY` y `FORCE ROW LEVEL SECURITY` (lo que obliga a aplicar las políticas incluso al usuario dueño de la base):
+Las tablas de dominio habilitan y fuerzan RLS. `FORCE` incluye a los dueños ordinarios,
+pero superusuarios y roles con `BYPASSRLS` lo omiten. La matriz describe políticas y
+permisos SQL para `medicitas_app`, no endpoints HTTP; vea el [contrato de API](api.es.md).
 
 | Base | Tabla | platform_admin | clinic_admin | receptionist | professional |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Clinics DB** | `clinic` | CRUD completo | Lee su clínica | Lee su clínica | Lee su clínica |
+| **Clinics DB** | `clinic` | CRUD completo | Lee/actualiza su clínica | Lee su clínica | Lee su clínica |
 | | `specialty` | CRUD completo | Solo lectura | Solo lectura | Solo lectura |
-| | `service` | CRUD completo | CRUD de su clínica | Solo lectura de su clínica | Solo lectura de su clínica |
+| | `service` | Lee/inserta/actualiza | Lee/inserta/actualiza en su clínica | Solo lectura de su clínica | Solo lectura de su clínica |
 | **Users DB** | `role` | Solo lectura | Solo lectura | Solo lectura | Solo lectura |
-| | `app_user` | CRUD completo | CRUD de su clínica (sin administradores de plataforma) | Solo lectura de su clínica | Lee su propio perfil |
-| | `professional`| Lectura global | CRUD de su clínica | Solo lectura de su clínica | Lee la clínica / actualiza su propio perfil |
-| | `patient` | **Sin acceso** | CRUD de su clínica | CRUD de su clínica | Solo lectura de su clínica |
+| | `app_user` | Lee/inserta/actualiza; bootstrap de primer administrador | Lee/inserta/actualiza en su clínica (sin administradores de plataforma) | Lee la clínica | Lee la clínica |
+| | `professional`| Lectura/inserción/actualización global | Lee/inserta/actualiza en su clínica | Solo lectura de su clínica | Lee la clínica / actualiza su propio perfil |
+| | `patient` | **Sin acceso** | Lee/inserta/actualiza en su clínica | Lee/inserta/actualiza en su clínica | Solo lectura de su clínica |
 | **Appointments DB** | `working_hours` | **Sin acceso** | CRUD de su clínica | Solo lectura de su clínica | CRUD de su propio horario |
 | | `schedule_block`| **Sin acceso** | CRUD de su clínica | Solo lectura de su clínica | CRUD de sus propios permisos y bloqueos |
-| | `appointment` | **Sin acceso** | CRUD de su clínica | CRUD de su clínica | Lee la clínica / actualiza el desenlace de sus propias citas |
-| | `clinical_note` | **Sin acceso** | **Sin acceso** | **Sin acceso** | **Solo de sus propias citas atendidas (RF15)** |
-| **Logs DB** | `audit_log` | **Sin acceso** | **Lee su clínica (RF19)** | **Sin acceso** | **Sin acceso** |
+| | `appointment` | **Sin acceso** | Lee/inserta/actualiza en su clínica | Lee/inserta/actualiza en su clínica | Lee la clínica / actualiza sus propias citas |
+| | `clinical_note` | **Sin acceso** | **Sin acceso** | **Sin acceso** | Lee/inserta/actualiza sus notas; la API exige cita atendida al crear |
+| **Logs DB** | `audit_log` | Solo inserción | Lee/inserta en su clínica | Inserta en su clínica | Inserta en su clínica |
+
+Las políticas INSERT de auditoría sirven a productores/relay; HTTP solo expone la
+consulta del administrador de clínica. SQL impide borrar usuarios, profesionales,
+pacientes, citas y notas. `app_user` permite además leerse por `app_user_id`; los
+handlers agregan filtros de clínica para gestionar usuarios. RLS no reemplaza las
+validaciones de campos y reglas de negocio.
 
 ---
 
@@ -205,17 +214,20 @@ Cada tabla tiene activados `ENABLE ROW LEVEL SECURITY` y `FORCE ROW LEVEL SECURI
 
 Cada base define un rol de aplicación `medicitas_app`:
 - No es superusuario ni dueño del esquema.
+- SQL también define `db_admin`, `db_receptionist` y `db_professional`. Los handlers actuales eligen `medicitas_app` para todos los actores; RLS usa el rol de dominio del contexto transaccional.
+- Compose conecta con el `POSTGRES_USER` de cada base y los handlers cambian de rol. Este login de desarrollo es privilegiado; la protección depende de usar el rol restringido. Los relays usan `medicitas_relay` para el outbox.
 - En `logs_db` solo tiene permisos de `SELECT` e `INSERT` (estrictamente de solo inserción: `UPDATE` y `DELETE` se niegan en los permisos del motor).
 
 ---
 
 ## 5. Despliegue con Docker Compose
 
-Para levantar todas las bases y servicios:
+Después de preparar el `.env` local como indica el [README](../README.es.md#arranque-local),
+este comando levanta solo las cuatro bases. No arranca los servicios HTTP, Keycloak ni Redis:
 
 ```bash
-# Levantar todas las bases y servicios requeridos
-docker compose --env-file .env.example up -d db_clinics db_users db_appointments db_logs
+# Levantar solo las cuatro bases
+docker compose up -d db_clinics db_users db_appointments db_logs
 
 # Verificar el estado de salud de los contenedores
 docker compose ps

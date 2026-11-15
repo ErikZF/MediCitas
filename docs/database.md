@@ -2,7 +2,7 @@
 
 **English** · [Español](database.es.md)
 
-In MediCitas, persistence is partitioned across 4 independent relational databases (PostgreSQL 18), designed for a microservices architecture implementing the **Database-per-Service** pattern.
+MediCitas stores its data in four PostgreSQL 18 databases, one per domain service.
 
 ---
 
@@ -75,8 +75,10 @@ keys and the constraints the engine enforces. The source is
 - **Dashed blue lines** are logical references across databases: there is no foreign
   key between services, so the service that writes the row checks that the id exists
   (see [section 3](#3-referential-integrity-in-microservices)).
-- `clinic_id` is the first column of every tenant table's primary key. Its references
-  to `clinic` are not drawn, to keep the picture readable.
+- Most tenant tables use composite keys starting with `clinic_id`. Exceptions include
+  `clinic` itself and `app_user`, whose clinic is nullable for platform users.
+  Global catalogs `role` and `specialty` have their own keys. Clinic references
+  are omitted from the picture for readability.
 
 ---
 
@@ -103,6 +105,7 @@ keys and the constraints the engine enforces. The source is
   - `professional`: Healthcare professional profile (physicians, therapists) linked 1:1 with an application user.
   - `professional_specialty`: Many-to-many (N:M) relationship between professionals and specialties.
   - `patient`: Patient registry per clinic (identification, full name, birth date, contact details).
+  - `outbox`: `AuditRecorded` events for patient contact writes; the application can insert and the audit relay can read and mark them published.
 
 ### 3. Appointments Database (`appointments_db`)
 - **Container:** `postgre_appointments_MediCitas`
@@ -115,8 +118,8 @@ keys and the constraints the engine enforces. The source is
   - `professional_service`: Mapping of which services each professional is eligible to perform.
   - `appointment`: Booked medical appointments. Features `EXCLUDE USING gist` constraints to prevent concurrent double-booking for both professionals and patients, as well as status transition triggers.
   - `clinical_note`: Highly sensitive medical consultation records (1:1 with attended appointments).
-  - `outbox`: Transactional outbox for domain events (`AgendaChanged`, `AppointmentBooked`, etc.) with a partial index on pending rows (`published_at IS NULL`). App roles can only `INSERT` per clinic; `medicitas_relay` has `SELECT` and `UPDATE` across all clinics.
-  - `idempotency_keys`: Stores `Idempotency-Key` responses per clinic for booking requests (E5).
+  - `outbox`: Transactional outbox for domain events (`AgendaChanged`, `AuditRecorded`) with a partial index on pending rows (`published_at IS NULL`). App roles can only `INSERT` per clinic; `medicitas_relay` has `SELECT` and `UPDATE` across all clinics.
+  - `idempotency_keys`: Schema reserved for per-clinic idempotency responses. The API does not read or write it; `Idempotency-Key` is not implemented.
 
 ### 4. Logs Database (`logs_db`)
 - **Container:** `postgre_logs_MediCitas`
@@ -133,8 +136,8 @@ keys and the constraints the engine enforces. The source is
 In a microservices architecture with isolated databases:
 1. **No Cross-Database Foreign Keys:** Foreign key constraints across different service databases are replaced with logical references (`UUID`). Entity identifiers default to RFC 9562 **UUID v7** via native `uuidv7()` for time-ordered B-tree locality.
 2. **Indexes on logical references:** Cross-reference columns (e.g., `clinic_id`, `professional_id`, `patient_id`) are covered by composite B-tree indexes that start with `clinic_id`, one per query they serve. Each one is justified by its execution plan in [indexes.md](indexes.md).
-3. **Shard-Ready Composite Keys:** Tenant-scoped tables include `clinic_id` in their primary keys, composite intra-database foreign keys, unique constraints, and `EXCLUDE USING gist` constraints so PostgreSQL can partition or horizontally shard by `clinic_id`.
-4. **Integrity Validation:** Cross-service business consistency is enforced in the application layer and through transactional checks or asynchronous messaging.
+3. **Composite tenant keys:** Most tenant tables include `clinic_id` in their keys and local references. This supports a future distribution by clinic; partitioning and sharding are not configured.
+4. **Integrity validation:** HTTP adapters validate the catalog, patient membership and professional assignments. These calls and the owning databases do not share a transaction: a later change in another service can invalidate an earlier check. Outbox relays deliver events; they do not provide cross-database foreign keys.
 
 ---
 
@@ -142,13 +145,10 @@ In a microservices architecture with isolated databases:
 
 To enforce strict clinic isolation (**Invariant I5**) and least-privilege role-based access control (**RF15**, **RF17**, **RF18**, **RF19**), MediCitas implements **Row-Level Security (RLS)** natively within PostgreSQL 18.
 
-### Multi-Tenancy Strategy Comparison
+### Multi-tenancy strategy
 
-| Strategy | Advantages | Disadvantages | Decision in MediCitas |
-| :--- | :--- | :--- | :--- |
-| **Schema-per-Tenant (`CREATE SCHEMA`)** | Physical table isolation per schema; clean logical separation. | Multiplies DDL migrations per clinic; connection routing complexity; expensive schema maintenance at scale. | Discarded due to operational overhead and scaling complexity across multiple branches. |
-| **Discriminator Column (`clinic_id`) at Application Level** | Simple relational model; straightforward queries. | If a query or ORM neglects `WHERE clinic_id = ...`, silent data leakage occurs (security defect in application layer). | Relational foundation adopted, but insufficient on its own without engine-level enforcement. |
-| **Row-Level Security (RLS) + Discriminator Column** | **Engine-enforced isolation:** PostgreSQL intercepts and filters every `SELECT`, `INSERT`, `UPDATE`, `DELETE`; completely prevents leakage even if parameters are tampered with or filters are omitted in the application layer. | Requires initializing session context variables (`SET LOCAL`) on each transaction. | **Selected as MediCitas's core multi-tenancy standard.** |
+The service databases share tenant tables with a `clinic_id` discriminator and RLS.
+The [strategy comparison](database-comparison.md) explains the alternatives and costs.
 
 ---
 
@@ -174,29 +174,37 @@ SELECT app_set_session_context(
 - `app_current_professional_id()`: Returns the healthcare professional UUID if applicable.
 - `app_is_platform_admin()`: Returns `true` if the current role is `platform_admin`.
 
-> [!IMPORTANT]
-> **Deny by Default:** When a query runs without an initialized session context, these helper functions safely evaluate to `NULL`. As a result, RLS predicate checks evaluate to `FALSE`, returning zero rows and preventing unauthorized access.
+Without context, identity helpers return `NULL` and `app_is_platform_admin()` returns
+`false`. Tenant equality policies hide rows. Global catalogs intentionally allow
+reads without clinic context, so this is not a blanket rule for every table.
 
 ---
 
 ### RLS Policy Matrix by Entity and Role
 
-Each table has `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY` activated (forcing policies to apply even to the database owner user):
+Domain tables enable and force RLS. `FORCE` includes ordinary owners, but superusers
+and roles with `BYPASSRLS` bypass it. The matrix describes SQL policies/grants for
+`medicitas_app`, not HTTP endpoints; see the [API contract](api.md) for exposed actions.
 
 | Database | Table | platform_admin | clinic_admin | receptionist | professional |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Clinics DB** | `clinic` | Full CRUD | Read own clinic | Read own clinic | Read own clinic |
+| **Clinics DB** | `clinic` | Full CRUD | Read/update own clinic | Read own clinic | Read own clinic |
 | | `specialty` | Full CRUD | Read-only | Read-only | Read-only |
-| | `service` | Full CRUD | CRUD for own clinic | Read-only for own clinic | Read-only for own clinic |
+| | `service` | Read/insert/update | Read/insert/update own clinic | Read-only for own clinic | Read-only for own clinic |
 | **Users DB** | `role` | Read-only | Read-only | Read-only | Read-only |
-| | `app_user` | Full CRUD | CRUD for own clinic (non-platform admins) | Read-only for own clinic | Read own profile |
-| | `professional`| Global Read | CRUD for own clinic | Read-only for own clinic | Read clinic / Update own profile |
-| | `patient` | **No access** | CRUD for own clinic | CRUD for own clinic | Read-only for own clinic |
+| | `app_user` | Read/insert/update; first-admin bootstrap | Read/insert/update own clinic (non-platform admins) | Read clinic | Read clinic |
+| | `professional`| Global read/insert/update | Read/insert/update own clinic | Read-only for own clinic | Read clinic / Update own profile |
+| | `patient` | **No access** | Read/insert/update own clinic | Read/insert/update own clinic | Read-only for own clinic |
 | **Appointments DB** | `working_hours` | **No access** | CRUD for own clinic | Read-only for own clinic | CRUD for own schedule |
 | | `schedule_block`| **No access** | CRUD for own clinic | Read-only for own clinic | CRUD for own leaves/blocks |
-| | `appointment` | **No access** | CRUD for own clinic | CRUD for own clinic | Read clinic / Update own appointments outcome |
-| | `clinical_note` | **No access** | **No access** | **No access** | **Own attended appointments only (RF15)** |
-| **Logs DB** | `audit_log` | **No access** | **Read own clinic (RF19)** | **No access** | **No access** |
+| | `appointment` | **No access** | Read/insert/update own clinic | Read/insert/update own clinic | Read clinic / Update own appointments |
+| | `clinical_note` | **No access** | **No access** | **No access** | Read/insert/update own notes; API requires an attended appointment to create |
+| **Logs DB** | `audit_log` | Insert only | Read/insert own clinic | Insert own clinic | Insert own clinic |
+
+Audit INSERT policies support producers/relay; HTTP exposes only the clinic-admin
+query. SQL denies deletion of users, professionals, patients, appointments and notes.
+`app_user` also has a self-read exception by `app_user_id`; domain handlers add clinic
+predicates for managed targets. RLS does not replace field-level business validation.
 
 ---
 
@@ -204,17 +212,21 @@ Each table has `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY` activa
 
 Each database defines an application role `medicitas_app`:
 - It is neither a superuser nor an owner of the schema.
+- SQL also defines `db_admin`, `db_receptionist` and `db_professional`. Current domain handlers select `medicitas_app` for all actors; RLS uses the domain role in the transaction context.
+- Compose connects with each database's `POSTGRES_USER`, then handlers switch role. This development login is privileged; protection depends on using the restricted role. Relays use `medicitas_relay` for the outbox.
 - In `logs_db`, it only has `SELECT` and `INSERT` permissions (strictly append-only, denying `UPDATE` and `DELETE` at the engine permission level).
 
 ---
 
 ## 5. Deployment with Docker Compose
 
-To start all databases and services:
+After preparing the local `.env` as in the [README](../README.md#local-startup),
+this command starts only the four databases. It does not start the HTTP services,
+Keycloak or Redis:
 
 ```bash
-# Start all databases and required services
-docker compose --env-file .env.example up -d db_clinics db_users db_appointments db_logs
+# Start only the four databases
+docker compose up -d db_clinics db_users db_appointments db_logs
 
 # Verify container health status
 docker compose ps

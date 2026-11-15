@@ -1,10 +1,11 @@
-# Caché de disponibilidad (tarjeta E8)
+# Caché de disponibilidad
 
 [English](cache.md) · **Español**
 
 appointments-service guarda en Redis las **ventanas libres de un profesional en un día**.
 RF7 (un profesional, un día) y RF8 (todos los profesionales, un rango de fechas) la leen
-primero y solo van a PostgreSQL por los días que faltan.
+primero y cargan de PostgreSQL los días faltantes. También consultan asociaciones
+de servicios; un acierto de caché no elimina toda consulta a la base.
 
 ## Diseño
 
@@ -31,15 +32,15 @@ Por eso alcanza con un `SET` simple y no hace falta un compare-and-set en Lua. E
 invalidan la fecha UTC y sus dos vecinas (`possibleLocalDates`). Las invalidaciones de
 más son baratas.
 
-**Cuando Redis falla, las respuestas se vuelven más lentas, nunca viejas.**
+Una invalidación fallida hace que el proceso afectado omita la caché:
 
 - Una invalidación fallida se reintenta una vez.
 - Si vuelve a fallar, se encola y el breaker se abre.
 - Antes de volver a confiar en la caché, se reproduce la cola.
 - Si se acumulan más de 1000 invalidaciones, el pod se salta la caché durante un TTL completo, para que todo valor anterior haya expirado.
 
-**Si el proceso muere entre el `COMMIT` y la invalidación** (tarjeta E14), la cola de arriba
-muere con él. Para cubrir ese caso, cada transacción que cambia una agenda también inserta un
+Si el proceso muere entre `COMMIT` e invalidación, la cola en memoria se pierde.
+Con la caché habilitada, cada transacción que cambia una agenda también inserta un
 evento `AgendaChanged` en la tabla `outbox`, en la misma transacción
 ([`db/agenda-outbox.ts`](../services/appointments-service/db/agenda-outbox.ts)):
 
@@ -56,10 +57,13 @@ los marca publicados en la misma transacción. Si Redis falla, la transacción h
 los eventos esperan a la siguiente pasada. Corre como `medicitas_relay` y solo toma
 `AgendaChanged`: los eventos `AuditRecorded` son del relay de auditoría.
 
-La invalidación directa sigue corriendo primero, porque es la que hace inmediato a I8. El relay
-vuelve a invalidar el mismo día un segundo después; eso cuesta un fallo de caché extra y nada
-más. El peor caso baja del TTL (10 minutos) a cerca de un segundo, y solo si un pod muere justo
-en ese instante. Los eventos solo se escriben cuando la caché está encendida.
+La invalidación directa corre después del commit y antes de responder. El relay
+reintenta las pendientes; consultar cada segundo no limita el plazo de datos viejos.
+Un proceso puede morir después del commit o fallar al invalidar mientras otro sigue
+leyendo Redis. El breaker y la cola son locales a cada proceso. Estos casos dejan
+I8 sin demostrar ante fallos o múltiples réplicas. Las claves versionadas protegen
+consultas posteriores a un aumento exitoso del contador; no hacen atómica una
+lectura ya iniciada con una escritura concurrente. Solo se escriben eventos con la caché habilitada.
 
 ## Cómo medirla
 
@@ -83,10 +87,11 @@ en paralelo. Se pueden cambiar con `MEASURE_REQUESTS` y `MEASURE_CONCURRENCY`.
 *Consultas de agenda por petición* cuenta las sentencias SQL que tocan `working_hours`,
 `schedule_block` o `appointment`, que es el trabajo que la caché busca ahorrar.
 
-## Resultados
+## Resultados registrados
 
-La tabla muestra la mediana de tres corridas en un contenedor Linux de 2 vCPU y 7 GB,
-con PostgreSQL 16 y Redis 7 en la misma máquina.
+Son medianas reportadas previamente de tres corridas en un contenedor Linux de
+2 vCPU y 7 GB, con PostgreSQL 16 y Redis 7. No se repitieron en esta revisión;
+Compose usa PostgreSQL 18. No acreditan el rendimiento actual de la pila completa.
 
 | Caché | p50 | p95 | p99 | Peticiones/s | Consultas de agenda por petición | Tasa de aciertos |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -102,6 +107,10 @@ Con la caché encendida:
 ## Salvedades
 
 - **La tasa de aciertos es el mejor caso.** Nada escribe durante la medición. En uso real cada reserva sube un contador de día, así que la siguiente lectura de ese día es un fallo.
-- **La latencia que queda no es trabajo de agenda.** RF7 sigue comprobando en PostgreSQL que el profesional ofrece el servicio. Cada petición además pasa por la verificación del JWT, la preparación de la sesión RLS y la serialización JSON.
+- **La latencia que queda no es trabajo de agenda.** RF7 sigue comprobando en PostgreSQL que el profesional ofrece el servicio. El helper de medición inyecta contexto de tenant: mide la preparación RLS y la serialización JSON, pero no la verificación real de JWT contra Keycloak.
 - **clinics-service y users-service son sustitutos en memoria**, así que estos números aíslan a appointments-service y su base.
-- **Los números vienen de una máquina local.** En Kubernetes, Redis y PostgreSQL están a un salto de red, lo que vuelve más lentas ambas filas; cada fallo que va a PostgreSQL cuesta más que un acierto en Redis, así que la diferencia debería crecer, no achicarse.
+- Los números corresponden a esa carga local. La red, escrituras, réplicas y latencia
+  de dependencias pueden cambiar el resultado; no se acredita una mejora en Kubernetes.
+- Use PostgreSQL 18 y Redis en una instancia descartable de pruebas. El helper crea
+  y borra bases y requiere un login administrativo de pruebas. La asignación de
+  variables de arriba es Bash; para PowerShell vea [requisitos de pruebas](ci-cd.es.md).

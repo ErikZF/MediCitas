@@ -4,11 +4,11 @@
 
 Capa de datos compartida de los microservicios de MediCitas (tarjeta E1), construida con Drizzle sobre `pg`.
 
-Resuelve tres cosas que ningún servicio debería reimplementar:
+Comparte estas funciones entre servicios:
 
-1. **Transacciones con el tenant** (`withTenantTx`): nivel de aislamiento explícito, el contexto de quien llama cargado para las políticas RLS y el rol de base con menor privilegio.
-2. **Reintentos** ante `40001` (falla de serialización) y `40P01` (deadlock), volviendo a correr la transacción completa.
-3. **Mapeo de errores de PostgreSQL** a códigos HTTP sin filtrar detalles de la base (`DbError`).
+1. Transacciones con el tenant (`withTenantTx`): nivel de aislamiento explícito, el contexto de quien llama cargado para las políticas RLS y el rol de base con menor privilegio.
+2. Reintentos ante `40001` (falla de serialización) y `40P01` (deadlock), volviendo a correr la transacción completa.
+3. Mapeo de errores de PostgreSQL a códigos HTTP sin filtrar detalles de la base (`DbError`).
 
 ## Uso en un servicio
 
@@ -61,11 +61,16 @@ Un contexto que rompe estas reglas lanza `InvalidTenantContextError` (500) antes
 
 ## Reglas del equipo
 
-- **Solo SQL dentro de `withTenantTx`.** Un deadlock vuelve a correr la función completa, así que una llamada HTTP o una escritura en Redis dentro de ella se ejecutaría dos veces. El trabajo externo va antes de la transacción o después del commit.
-- **Nada de configuración a nivel de sesión.** Nunca `SET` sin `LOCAL`, `set_config(..., false)`, `app_reset_session_context()`, `LISTEN/NOTIFY` ni advisory locks de sesión. Detrás de PgBouncer en modo transacción, la siguiente petición heredaría esta clínica. Las pruebas de integración verifican que nada sobreviva a un commit o a un rollback.
+- **Solo SQL en callbacks con reintentos.** Un deadlock vuelve a correr la función completa, así que una llamada HTTP o una escritura en Redis dentro de ella se ejecutaría dos veces. El trabajo externo va antes de la transacción o después del commit.
+- **Configuración local a la transacción.** Nunca `SET` sin `LOCAL`, `set_config(..., false)`, `app_reset_session_context()`, `LISTEN/NOTIFY` ni advisory locks de sesión. Detrás de PgBouncer en modo transacción, la siguiente petición heredaría esta clínica. Las pruebas de integración verifican que nada sobreviva a un commit o a un rollback.
 - **Nada de prepared statements con nombre** (`.prepare('name')`) mientras PgBouncer corra sin `max_prepared_statements`.
 - **El usuario de conexión debe poder asumir el rol.** Un superusuario puede; cualquier otro login necesita `GRANT medicitas_app TO <login>;`. No debe tener `BYPASSRLS`.
 - **Errores de restricciones propios de cada servicio:** `constraintErrors` le da significado a restricciones nuevas, por ejemplo `{ patient_clinic_id_identification_key: { status: 409, code: 'patient_exists', message: '...' } }`.
+
+RF2 y la sincronización del claim de RF4 hacen trabajo externo en transacciones
+con `retry: false`. Mantienen locks mientras esperan a Keycloak; no tienen la
+misma propiedad de reintento que las reservas. PgBouncer no está desplegado en
+Compose ni Kubernetes; las reglas anteriores preparan su uso futuro.
 
 ## Variables de entorno
 
@@ -89,8 +94,12 @@ Desde la raíz del repositorio:
 npm install
 npm run typecheck -w packages/db
 npm test -w packages/db       # pruebas unitarias; las de integración se saltan sin base de datos
-TEST_DATABASE_URL=postgres://user:pass@localhost:5433/appointments_db npm run test:integration -w packages/db
+TEST_DATABASE_URL='postgres://<user>:<password>@localhost:5433/postgres' npm run test:integration -w packages/db
 ```
+
+El ejemplo de variables usa Bash. En PowerShell use `$env:TEST_DATABASE_URL`;
+vea [requisitos de pruebas](../../docs/ci-cd.es.md). Apunte a una instancia
+PostgreSQL 18 descartable: los helpers crean roles además de bases.
 
 Las pruebas de integración crean una base desechable, aplican el `database/appointments/init.sql` real (tablas, políticas RLS y `medicitas_app`) y la borran al terminar, así que necesitan un usuario que pueda crear bases (el `POSTGRES_USER` del contenedor sirve). Cubren:
 
