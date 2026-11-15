@@ -78,6 +78,7 @@ describe('edge-gateway proxy (I3)', () => {
     ['/users/abc/role', 'users'], ['/professionals', 'users'], ['/professionals/abc', 'users'],
     ['/patients', 'users'], ['/patients/abc', 'users'],
     ['/professionals/abc/working-hours', 'appointments'], ['/professionals/abc/blocks', 'appointments'],
+    ['/professionals/abc/services/def', 'appointments'],
     ['/patients/abc/appointments', 'appointments'], ['/appointments/abc/note', 'appointments'],
     ['/appointments/counts', 'appointments'], ['/availability', 'appointments'], ['/agenda/professionals/abc', 'appointments'],
     ['/audit/logs', 'audit'],
