@@ -1,5 +1,5 @@
 import { and, count, eq, gte, lt } from 'drizzle-orm';
-import { assertTenantContext, MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
+import { assertTenantContext, MEDICITAS_DB_ROLES, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
 import { appointment } from '../../db/schema.ts';
 import { ForbiddenError } from '../../domain/errors.ts';
 import { parseOr422 } from '../../http/validation.ts';
@@ -42,7 +42,7 @@ export async function countAppointmentsByStatus(
       lt(appointment.startsAt, new Date(range.to)),
     ))
     .groupBy(appointment.status),
-  { dbRoles: MEDICITAS_APP_ROLE, accessMode: 'read only' });
+  { dbRoles: MEDICITAS_DB_ROLES, accessMode: 'read only' });
 
   const result: AppointmentCounts = {
     counts: { booked: 0, attended: 0, no_show: 0, cancelled: 0, rescheduled: 0 },

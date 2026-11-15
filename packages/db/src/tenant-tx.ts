@@ -15,8 +15,8 @@ export interface TenantTxOptions {
   isolationLevel?: 'read committed' | 'repeatable read' | 'serializable';
   accessMode?: 'read only' | 'read write';
   /**
-   * When given, every transaction runs SET LOCAL ROLE. Pass 'medicitas_app' to use the
-   * least-privilege role of the MediCitas schemas, or a map for one role per actor.
+   * When given, every transaction runs SET LOCAL ROLE. The services pass MEDICITAS_DB_ROLES,
+   * one least-privilege role per actor; a single name uses that role for every actor.
    */
   dbRoles?: DbRoles;
   /** Per-transaction limit; applied locally so it never outlives the transaction in the pool. */

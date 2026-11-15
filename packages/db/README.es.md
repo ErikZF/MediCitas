@@ -13,7 +13,7 @@ Comparte estas funciones entre servicios:
 ## Uso en un servicio
 
 ```ts
-import { createDatabase, MEDICITAS_APP_ROLE, readDbConfig, withTenantTx, type TenantContext } from '@medicitas/db';
+import { createDatabase, MEDICITAS_DB_ROLES, readDbConfig, withTenantTx, type TenantContext } from '@medicitas/db';
 
 const { db } = createDatabase(readDbConfig('DB_APPOINTMENTS', 'appointments-service'), {
   onIdleClientError: () => logger.error('Idle database client failed.'),
@@ -29,7 +29,7 @@ const ctx: TenantContext = {
 
 const notes = await withTenantTx(db, ctx, async (tx) => {
   // consultas con tx...
-}, { dbRoles: MEDICITAS_APP_ROLE });
+}, { dbRoles: MEDICITAS_DB_ROLES });   // el rol de base del actor
 ```
 
 Cuando una consulta viola una restricción, `withTenantTx` lanza un `DbError` con un `status`, así que el `errorHandler` compartido ya responde con el código correcto. Por ejemplo, `no_overlap_professional` se convierte en **409 `slot_taken`**.
@@ -40,7 +40,7 @@ Cuando una consulta viola una restricción, `withTenantTx` lanza un `DbError` co
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL READ COMMITTED;   -- explícito, siempre
 SELECT app_set_session_context($1::uuid, $2::uuid, $3::text, $4::uuid, true);  -- true = solo esta transacción
-SET LOCAL ROLE "medicitas_app";                   -- solo cuando se pasa dbRoles
+SET LOCAL ROLE "db_receptionist";                 -- el rol del actor, solo cuando se pasa dbRoles
 -- ...las consultas del servicio...
 COMMIT;
 ```
@@ -64,7 +64,7 @@ Un contexto que rompe estas reglas lanza `InvalidTenantContextError` (500) antes
 - **Solo SQL en callbacks con reintentos.** Un deadlock vuelve a correr la función completa, así que una llamada HTTP o una escritura en Redis dentro de ella se ejecutaría dos veces. El trabajo externo va antes de la transacción o después del commit.
 - **Configuración local a la transacción.** Nunca `SET` sin `LOCAL`, `set_config(..., false)`, `app_reset_session_context()`, `LISTEN/NOTIFY` ni advisory locks de sesión. Detrás de PgBouncer en modo transacción, la siguiente petición heredaría esta clínica. Las pruebas de integración verifican que nada sobreviva a un commit o a un rollback.
 - **Nada de prepared statements con nombre** (`.prepare('name')`) mientras PgBouncer corra sin `max_prepared_statements`.
-- **El usuario de conexión debe poder asumir el rol.** Un superusuario puede; cualquier otro login necesita `GRANT medicitas_app TO <login>;`. No debe tener `BYPASSRLS`.
+- **El usuario de conexión debe poder asumir los roles.** `MEDICITAS_DB_ROLES` asigna `db_admin` a `clinic_admin` y `platform_admin`, `db_receptionist` a `receptionist` y `db_professional` a `professional` (un texto en vez de un mapa usa el mismo rol para todos). Un superusuario o el dueño del esquema puede cambiar a ellos; cualquier otro login necesita `GRANT db_admin, db_receptionist, db_professional TO <login>;`. No debe tener `BYPASSRLS`.
 - **Errores de restricciones propios de cada servicio:** `constraintErrors` le da significado a restricciones nuevas, por ejemplo `{ patient_clinic_id_identification_key: { status: 409, code: 'patient_exists', message: '...' } }`.
 
 RF2 y la sincronización del claim de RF4 hacen trabajo externo en transacciones

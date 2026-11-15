@@ -6,7 +6,7 @@
 // appointments_db enforce the same rule again inside the engine.
 
 import { and, asc, eq, gt, lt } from 'drizzle-orm';
-import { MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
+import { MEDICITAS_DB_ROLES, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
 import { recordAgendaChange } from '../../db/agenda-outbox.ts';
 import { lockProfessionalAgenda } from '../../db/locks.ts';
 import { appointment, scheduleBlock, workingHours } from '../../db/schema.ts';
@@ -49,7 +49,7 @@ export interface ConflictDto {
   endsAt: string;
 }
 
-const asApp = { dbRoles: MEDICITAS_APP_ROLE } as const;
+const asActor = { dbRoles: MEDICITAS_DB_ROLES } as const;
 
 function assertCanRead(ctx: TenantContext): void {
   if (ctx.role === 'platform_admin') {
@@ -86,7 +86,7 @@ export async function getWorkingHours(deps: ScheduleDeps, ctx: TenantContext, pr
       .where(eq(workingHours.professionalId, professionalId))
       .orderBy(asc(workingHours.weekday), asc(workingHours.startTime));
     return rows.map(toWorkingHoursDto);
-  }, asApp);
+  }, asActor);
 }
 
 /**
@@ -118,7 +118,7 @@ export async function replaceWorkingHours(
     return rows
       .map(toWorkingHoursDto)
       .sort((a, b) => a.weekday - b.weekday || a.startTime.localeCompare(b.startTime));
-  }, asApp);
+  }, asActor);
 
   // A weekly rule touches every future day: the professional's generation moves them all at once.
   await deps.cache?.professionalChanged(ctx.clinicId as string, professionalId);
@@ -138,7 +138,7 @@ export async function listBlocks(
     if (range.to !== undefined) conditions.push(lt(scheduleBlock.startsAt, new Date(range.to)));
     const rows = await tx.select().from(scheduleBlock).where(and(...conditions)).orderBy(asc(scheduleBlock.startsAt));
     return rows.map(toBlockDto);
-  }, asApp);
+  }, asActor);
 }
 
 /**
@@ -184,7 +184,7 @@ export async function addBlock(
       block: toBlockDto(row!),
       conflicts: conflicts.map((c) => ({ ...c, startsAt: c.startsAt.toISOString(), endsAt: c.endsAt.toISOString() })),
     };
-  }, asApp);
+  }, asActor);
 
   // A block can span many days: invalidate them all through the professional's generation.
   await deps.cache?.professionalChanged(ctx.clinicId as string, professionalId);

@@ -58,7 +58,7 @@ describe('RF21 query construction (pg driver stub)', () => {
     assert.match(statements[0]!.sql, /read committed.*read only/);
     const context = statements.find((s) => s.sql.includes('app_set_session_context'))!;
     assert.deepEqual(context.params, [ctx.clinicId, ctx.userId, ctx.role, null]);
-    assert.ok(statements.some((s) => s.sql === 'set local role "medicitas_app"'));
+    assert.ok(statements.some((s) => s.sql === 'set local role "db_admin"'));
     const aggregates = statements.filter((s) => s.sql.includes('count(*)'));
     assert.equal(aggregates.length, 1);
     assert.match(aggregates[0]!.sql, /"clinic_id" = \$1/);

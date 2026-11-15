@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { hasPermission, type Permission } from '@medicitas/auth';
-import { MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext, type Transaction } from '@medicitas/db';
+import { MEDICITAS_DB_ROLES, withTenantTx, type Database, type TenantContext, type Transaction } from '@medicitas/db';
 import { appUser, professional } from '../../db/schema.ts';
 import type { IdentityAdmin, Assignment } from '../../adapters/keycloak-admin.ts';
 import { UserManagementError } from './user-management.errors.ts';
@@ -8,7 +8,7 @@ import { parseClinicUserRole, parseManagedUserId, parseNewClinicUser } from './u
 
 export interface Management { db: Database; identity: IdentityAdmin }
 export interface Actor { ctx: TenantContext; subject: string }
-const options = { dbRoles: MEDICITAS_APP_ROLE, retry: false } as const;
+const options = { dbRoles: MEDICITAS_DB_ROLES, retry: false } as const;
 function authorize({ctx}: Actor, permission: Permission) {
   if (!hasPermission(ctx.role, permission)) throw new UserManagementError('forbidden');
 }

@@ -22,12 +22,12 @@ solo toque su clínica. La comparación siguiente cubre consultas por clínica e
 | Una consulta que olvida el filtro | Ve todas las clínicas | Ve solo su clínica |
 | Una escritura en otra clínica | Pasa | Se rechaza (`WITH CHECK`) |
 | Sin contexto | No aplica | No ve nada (falla cerrado) |
-| La salta | Cualquier error en cualquier consulta | Los superusuarios y los roles con `BYPASSRLS`; las transacciones de dominio cambian a `medicitas_app` |
+| La salta | Cualquier error en cualquier consulta | Los superusuarios y los roles con `BYPASSRLS`; las transacciones de dominio usan roles de actor restringidos |
 
 MediCitas usa `clinic_id` con RLS. La columna delimita las filas por clínica y encabeza
 la mayoría de las claves compuestas e índices de consulta; los servicios también la
 filtran donde ayuda al plan. Compose usa un login de desarrollo privilegiado, por lo
-que las transacciones de dominio deben cambiar a `medicitas_app` para aplicar RLS.
+que las transacciones de dominio cambian a roles de actor restringidos para aplicar RLS.
 Esta comparación mide aislamiento y costo de consulta.
 
 ## Cómo se comparó
@@ -58,6 +58,10 @@ Los tiempos son la mediana de 7 corridas en un contenedor de 2 vCPU con PostgreS
 Compose usa PostgreSQL 18. Los buffers son páginas de 8 KB: muestran el
 trabajo, y el tiempo su costo en esa máquina. El script también comprueba que todas las
 variantes devuelvan la misma cantidad de filas.
+
+Estas mediciones usan `medicitas_app`. Los handlers de dominio actuales usan
+`db_admin`, `db_receptionist` o `db_professional` según el actor, con permisos SQL
+y RLS; vea los [roles de base](database.es.md#roles-de-base-con-menor-privilegio).
 
 ## Aislamiento
 
@@ -144,7 +148,7 @@ eliminarla.
 | --- | --- | --- |
 | Seguridad | El aislamiento no depende de que todas las consultas estén bien; también se revisan las escrituras; sin contexto no hay filas | Un rol con `BYPASSRLS`, o una conexión de superusuario, omite las políticas; las transacciones de dominio deben usar el rol restringido |
 | Rendimiento | Los mismos índices y páginas que con la columna | Una revisión del rol por fila (hasta ~3 ms en RF21 aquí), que se elimina guardando en caché las funciones; los planes que dependen de la clínica se estiman con menos precisión sin el filtro en la consulta |
-| Operación | La regla se escribe una vez por tabla, en SQL, junto a los datos | Hay que cargar el contexto en cada transacción (`withTenantTx` lo hace, local a la transacción, así que es seguro con un pool y con PgBouncer en modo transacción); los errores son menos explícitos (un resultado vacío en vez de un 403); las pruebas tienen que correr como `medicitas_app`, no como el dueño |
+| Operación | La regla se escribe una vez por tabla, en SQL, junto a los datos | Hay que cargar el contexto en cada transacción (`withTenantTx` lo hace, local a la transacción, así que es seguro con un pool y con PgBouncer en modo transacción); los errores son menos explícitos (un resultado vacío en vez de un 403); las pruebas necesitan un rol restringido, no el dueño |
 
 Un siguiente paso posible es guardar en caché las funciones de contexto en las
 políticas de los cuatro `init.sql`, con `(SELECT app_current_…())`. El script compara

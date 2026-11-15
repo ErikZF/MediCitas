@@ -20,7 +20,7 @@ flowchart TD
     Service --> Auth["JWT Verification -> TenantContext (clinicId, userId, role, professionalId)"]
     Auth --> Tx["withTenantTx() (packages/db/src/tenant-tx.ts)"]
     Tx --> GUC["SELECT app_set_session_context(..., p_is_local := true)"]
-    GUC --> Role["SET LOCAL ROLE medicitas_app (no BYPASSRLS)"]
+    GUC --> Role["SET LOCAL ROLE db_admin / db_receptionist / db_professional (by token role, no BYPASSRLS)"]
     Role --> RLS["PostgreSQL 18 (ENABLE + FORCE ROW LEVEL SECURITY)"]
 
     Service --> Cache["Redis Cache Key: avail:v1:{clinic:professional}:g<gen>:v<ver>:<date>"]
@@ -50,7 +50,7 @@ flowchart TD
 - Domain database operations run inside `withTenantTx(db, ctx, fn, options)`, which wraps work in a PostgreSQL transaction (`READ COMMITTED` by default):
   1. Executes `SELECT app_set_session_context(clinicId, userId, role, professionalId, true)` — setting `app.current_clinic_id`, `app.current_user_id`, `app.current_role`, and `app.current_professional_id` with `is_local = true`.
   2. Optionally sets a transaction-local `statement_timeout`.
-  3. Runs `SET LOCAL ROLE medicitas_app` in current handlers. A role map is supported by the library.
+  3. Runs `SET LOCAL ROLE` with the database role of the actor (`MEDICITAS_DB_ROLES`: `db_admin`, `db_receptionist` or `db_professional`, none with `BYPASSRLS`); see [database.md](database.md#least-privilege-database-roles).
 - Because every GUC and `SET LOCAL ROLE` exists only for the active transaction, pooled connections do not retain those transaction-local settings after commit or rollback. PgBouncer
   is not deployed here; the tests reuse a connection to check cleanup.
 

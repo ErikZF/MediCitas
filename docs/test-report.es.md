@@ -58,7 +58,7 @@ el mismo comando contra contenedores de servicio de PostgreSQL 18 y Redis, y el 
 
 ## Corrida registrada de etapa 1
 
-Resultados registrados de etapa 1, actualizados en `ebd0039` (2026-11-15):
+Resultados registrados de etapa 1, actualizados en `233c2f2` (2026-11-15):
 
 | Suite | Pasan | Fallan | Saltadas |
 | --- | ---: | ---: | ---: |
@@ -68,9 +68,9 @@ Resultados registrados de etapa 1, actualizados en `ebd0039` (2026-11-15):
 | `services/edge-gateway` | 40 | 0 | 0 |
 | `services/clinics-service` | 7 | 0 | 0 |
 | `services/users-service` | 15 | 0 | 2 |
-| `services/appointments-service` | 168 | 0 | 0 |
+| `services/appointments-service` | 186 | 0 | 0 |
 | `services/audit-service` | 28 | 0 | 0 |
-| **Total** | **491** | **0** | **2** |
+| **Total** | **509** | **0** | **2** |
 
 Las dos pruebas saltadas de users-service crean usuarios en un realm desechable de
 Keycloak (`J2_TEMP_REALM=1`) que solo existe en la máquina de quien las corre. Lo que
@@ -134,6 +134,12 @@ etapa de punta a punta.
 I3 conserva límites ante cambios posteriores de horario e I8 ante invalidación
 asíncrona y fallos entre réplicas; vea [concurrencia](concurrency.es.md) y
 [caché](cache.es.md). Estas pruebas no acreditan ambos invariantes sin condiciones.
+
+**Roles de base con menor privilegio** (módulo 5 del núcleo): cada petición corre con el rol
+de base de su actor. appointments `integration/db-roles.test.ts` comprueba la matriz de
+permisos de cada rol y que una reserva falle cuando el rol de su actor pierde `INSERT`
+mientras la del administrador sigue funcionando; db `integration/tenant-tx.test.ts`
+comprueba que recepción y administración no pueden leer notas clínicas en el motor.
 
 ## Criterios de aceptación del enunciado
 

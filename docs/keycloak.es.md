@@ -56,9 +56,9 @@ flowchart TD
 MediCitas es una plataforma SaaS que atiende a varias clínicas (tenants):
 - Cada clínica se identifica con un UUID `clinic_id`.
 - El aislamiento entre tenants se impone de forma estricta en PostgreSQL con **Row-Level Security (RLS)** mediante parámetros de sesión (`app.current_clinic_id`, `app.current_user_id`, `app.current_role`, `app.current_professional_id`).
-- Las transacciones de dominio actuales usan `medicitas_app`. SQL también define
-  `db_admin`, `db_receptionist` y `db_professional`; los handlers normales no
-  seleccionan ese mapa de roles. Los relays usan `medicitas_relay` en el outbox fuente.
+- Las transacciones de dominio usan `MEDICITAS_DB_ROLES` para elegir el rol SQL
+  del actor; vea los [roles de base](database.es.md#roles-de-base-con-menor-privilegio).
+  Los relays usan `medicitas_relay` en el outbox fuente.
 
 ### ¿Por qué un solo realm con claims personalizados?
 1. **Rendimiento sin estado**: los microservicios verifican la firma del JWT por su cuenta, usando el endpoint público JWKS de Keycloak (`/realms/Sistema_Clinico/protocol/openid-connect/certs`). Verificar un token no requiere consultas a la base.
@@ -110,7 +110,7 @@ La librería compartida `@medicitas/auth` provee middlewares y extractores de co
 
 ```typescript
 import { requireTenantContext, extractTenantContext } from '@medicitas/auth';
-import { withTenantTx, MEDICITAS_APP_ROLE } from '@medicitas/db';
+import { withTenantTx, MEDICITAS_DB_ROLES } from '@medicitas/db';
 
 // 1. Como middleware de Express:
 app.use('/appointments', requireTenantContext, async (req, res) => {
@@ -119,7 +119,7 @@ app.use('/appointments', requireTenantContext, async (req, res) => {
   // Se usa en transacciones de base de datos
   await withTenantTx(db, ctx, async (tx) => {
     // consultas aisladas a ctx.clinicId
-  }, { dbRoles: MEDICITAS_APP_ROLE });
+  }, { dbRoles: MEDICITAS_DB_ROLES });
 });
 
 // 2. O resolviendo el contexto desde req.user:

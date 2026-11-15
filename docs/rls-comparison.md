@@ -21,12 +21,12 @@ The comparison below covers tenant queries in `appointments_db` and `logs_db`.
 | A query that forgets the filter | Sees every clinic | Sees only its clinic |
 | A write to another clinic | Goes through | Rejected (`WITH CHECK`) |
 | Without context | Not applicable | Sees nothing (fails closed) |
-| Bypassed by | Any bug in any query | Superusers and roles with `BYPASSRLS`; domain transactions switch to `medicitas_app` |
+| Bypassed by | Any bug in any query | Superusers and roles with `BYPASSRLS`; domain transactions use restricted actor roles |
 
 MediCitas uses `clinic_id` with RLS. The column scopes tenant rows and leads most
 composite keys and query indexes; services also filter by it where it helps the plan.
-Compose uses a privileged development login, so domain transactions must switch to
-`medicitas_app` for RLS to apply. This comparison measures isolation and query cost.
+Compose uses a privileged development login, so domain transactions switch to
+restricted actor roles for RLS to apply. This comparison measures isolation and query cost.
 
 ## How it was compared
 
@@ -55,6 +55,10 @@ ways, on the same data:
 Times are the median of 7 runs on a 2 vCPU container with PostgreSQL 16.
 Compose uses PostgreSQL 18. Buffers are 8 KB pages: they show the work, the time its
 cost on that machine. The script also checks that every variant returns the same number of rows.
+
+These measurements use `medicitas_app`. Current domain handlers use `db_admin`,
+`db_receptionist` or `db_professional` according to the actor, with both SQL grants
+and RLS; see [database roles](database.md#least-privilege-database-roles).
 
 ## Isolation
 
@@ -136,7 +140,7 @@ milliseconds on the largest query, and the measurements show how to remove it.
 | --- | --- | --- |
 | Safety | Isolation does not depend on every query being right; writes are checked too; no context means no rows | A role with `BYPASSRLS`, or a superuser connection, bypasses the policies; domain transactions must use the restricted role |
 | Performance | Same indexes and pages as the column | A per-row role check (up to ~3 ms on RF21 here), removable by caching the functions; plans that depend on the clinic are estimated less precisely without the filter in the query |
-| Operations | The rule is written once per table, in SQL, next to the data | The context has to be set in every transaction (`withTenantTx` does it, local to the transaction, so it is safe with a pool and PgBouncer in transaction mode); errors are less explicit (an empty result instead of a 403); tests have to run as `medicitas_app`, not as the owner |
+| Operations | The rule is written once per table, in SQL, next to the data | The context has to be set in every transaction (`withTenantTx` does it, local to the transaction, so it is safe with a pool and PgBouncer in transaction mode); errors are less explicit (an empty result instead of a 403); tests need a restricted role, not the owner |
 
 A possible next step is to cache context functions in the policies of the four
 `init.sql` files with `(SELECT app_current_…())`. The script compares row counts and

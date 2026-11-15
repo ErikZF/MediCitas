@@ -357,15 +357,17 @@ ALTER TABLE public.outbox ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.outbox FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY outbox_insert_policy ON public.outbox
-    FOR INSERT TO medicitas_app
+    FOR INSERT TO medicitas_app, db_admin, db_receptionist, db_professional
     WITH CHECK (
         clinic_id = app_current_clinic_id()
         AND app_current_role()
             IN ('clinic_admin', 'receptionist', 'professional')
     );
 
-REVOKE ALL ON public.outbox FROM PUBLIC, medicitas_app;
-GRANT INSERT ON public.outbox TO medicitas_app;
+-- Each database role of the matrix (db_admin, db_receptionist, db_professional)
+-- records the audit events of what it does; none of them can read or change the queue.
+REVOKE ALL ON public.outbox FROM PUBLIC, medicitas_app, db_admin, db_receptionist, db_professional;
+GRANT INSERT ON public.outbox TO medicitas_app, db_admin, db_receptionist, db_professional;
 
 -- The audit relay (audit-service) reads and marks the events of every clinic.
 -- It only ever runs as medicitas_relay, which cannot touch any other table.
@@ -401,7 +403,7 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 $$;
 
 DROP POLICY IF EXISTS app_user_first_admin_insert ON public.app_user;
-CREATE POLICY app_user_first_admin_insert ON public.app_user FOR INSERT TO medicitas_app
+CREATE POLICY app_user_first_admin_insert ON public.app_user FOR INSERT TO medicitas_app, db_admin
 WITH CHECK (app_is_platform_admin() AND app_current_clinic_id() IS NULL
     AND clinic_id IS NOT NULL AND role_code = 'clinic_admin' AND is_first_admin
     AND NOT public.app_clinic_has_users(clinic_id));

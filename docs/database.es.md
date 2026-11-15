@@ -188,14 +188,15 @@ globales permiten lecturas sin contexto de clínica; no es una regla para toda t
 ### Matriz de políticas RLS por entidad y rol
 
 Las tablas de dominio habilitan y fuerzan RLS. `FORCE` incluye a los dueños ordinarios,
-pero superusuarios y roles con `BYPASSRLS` lo omiten. La matriz describe políticas y
-permisos SQL para `medicitas_app`, no endpoints HTTP; vea el [contrato de API](api.es.md).
+pero superusuarios y roles con `BYPASSRLS` lo omiten. La matriz combina políticas SQL
+con los permisos de los roles de actor indicados abajo. Las acciones HTTP están en el
+[contrato de API](api.es.md).
 
 | Base | Tabla | platform_admin | clinic_admin | receptionist | professional |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Clinics DB** | `clinic` | CRUD completo | Lee/actualiza su clínica | Lee su clínica | Lee su clínica |
 | | `specialty` | CRUD completo | Solo lectura | Solo lectura | Solo lectura |
-| | `service` | Lee/inserta/actualiza | Lee/inserta/actualiza en su clínica | Solo lectura de su clínica | Solo lectura de su clínica |
+| | `service` | CRUD SQL | CRUD SQL en su clínica | Solo lectura de su clínica | Solo lectura de su clínica |
 | **Users DB** | `role` | Solo lectura | Solo lectura | Solo lectura | Solo lectura |
 | | `app_user` | Lee/inserta/actualiza; bootstrap de primer administrador | Lee/inserta/actualiza en su clínica (sin administradores de plataforma) | Lee la clínica | Lee la clínica |
 | | `professional`| Lectura/inserción/actualización global | Lee/inserta/actualiza en su clínica | Solo lectura de su clínica | Lee la clínica / actualiza su propio perfil |
@@ -204,23 +205,46 @@ permisos SQL para `medicitas_app`, no endpoints HTTP; vea el [contrato de API](a
 | | `schedule_block`| **Sin acceso** | CRUD de su clínica | Solo lectura de su clínica | CRUD de sus propios permisos y bloqueos |
 | | `appointment` | **Sin acceso** | Lee/inserta/actualiza en su clínica | Lee/inserta/actualiza en su clínica | Lee la clínica / actualiza sus propias citas |
 | | `clinical_note` | **Sin acceso** | **Sin acceso** | **Sin acceso** | Lee/inserta/actualiza sus notas; la API exige cita atendida al crear |
-| **Logs DB** | `audit_log` | Solo inserción | Lee/inserta en su clínica | Inserta en su clínica | Inserta en su clínica |
+| **Logs DB** | `audit_log` | Sin acceso | Lee su clínica | Sin acceso | Sin acceso |
 
-Las políticas INSERT de auditoría sirven a productores/relay; HTTP solo expone la
-consulta del administrador de clínica. SQL impide borrar usuarios, profesionales,
-pacientes, citas y notas. `app_user` permite además leerse por `app_user_id`; los
+El relay de auditoría inserta como `medicitas_app`; HTTP solo expone la consulta del
+administrador de clínica. La API retira servicios con `is_active`; el permiso SQL de
+`db_admin` todavía permite DELETE. SQL impide borrar usuarios, profesionales, pacientes,
+citas y notas. `app_user` permite además leerse por `app_user_id`; los
 handlers agregan filtros de clínica para gestionar usuarios. RLS no reemplaza las
 validaciones de campos y reglas de negocio.
 
 ---
 
-### Rol de base con menor privilegio (`medicitas_app`)
+### Roles de base con menor privilegio
 
-Cada base define un rol de aplicación `medicitas_app`:
-- No es superusuario ni dueño del esquema.
-- SQL también define `db_admin`, `db_receptionist` y `db_professional`. Los handlers actuales eligen `medicitas_app` para todos los actores; RLS usa el rol de dominio del contexto transaccional.
-- Compose conecta con el `POSTGRES_USER` de cada base y los handlers cambian de rol. Este login de desarrollo es privilegiado; la protección depende de usar el rol restringido. Los relays usan `medicitas_relay` para el outbox.
-- En `logs_db` solo tiene permisos de `SELECT` e `INSERT` (estrictamente de solo inserción: `UPDATE` y `DELETE` se niegan en los permisos del motor).
+Los handlers de dominio pasan `MEDICITAS_DB_ROLES` a `withTenantTx`, que ejecuta
+`SET LOCAL ROLE` según el token verificado:
+
+| Actor (token) | Rol de base |
+| --- | --- |
+| `clinic_admin`, `platform_admin` | `db_admin` |
+| `receptionist` | `db_receptionist` |
+| `professional` | `db_professional` |
+
+Estos roles no tienen `BYPASSRLS` ni son dueños del esquema. Los permisos limitan los
+comandos y RLS limita las filas, como resume la matriz anterior. En particular,
+`db_admin` y `db_receptionist` no pueden leer notas clínicas. Los roles de dominio solo
+insertan en los outbox; `medicitas_relay` lee y marca sus eventos. El relay de auditoría
+usa `medicitas_app` para agregar filas a `logs_db.audit_log`.
+
+Compose conecta con el `POSTGRES_USER` privilegiado de cada base y luego los handlers
+cambian de rol. El login debe poder asumir los roles requeridos; los scripts de inicio
+se los otorgan a su dueño. Un login aparte necesita que se le otorgue pertenencia a
+los roles que use. `SET LOCAL ROLE` y el contexto de identidad terminan con la transacción.
+
+Las [pruebas de roles por actor](../services/appointments-service/tests/integration/db-roles.test.ts)
+comprueban la matriz de permisos y que retirar el `INSERT` de recepción detenga sus
+reservas mientras un administrador todavía puede reservar. Los volúmenes existentes
+de `users_db` necesitan las versiones actuales de los upgrades de
+[outbox de pacientes](../database/updates/users/upgrade-patient-audit-outbox.sql) y
+[primer administrador](../database/updates/users/upgrade-first-admin.sql) para dar acceso
+a los roles de actor; las bases nuevas ya los incluyen en `init.sql`.
 
 ---
 

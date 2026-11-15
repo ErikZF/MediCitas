@@ -56,7 +56,7 @@ documented command.
 
 ## Recorded stage-1 run
 
-Recorded stage-1 results, updated in `ebd0039` (2026-11-15):
+Recorded stage-1 results, updated in `233c2f2` (2026-11-15):
 
 | Suite | Passed | Failed | Skipped |
 | --- | ---: | ---: | ---: |
@@ -66,9 +66,9 @@ Recorded stage-1 results, updated in `ebd0039` (2026-11-15):
 | `services/edge-gateway` | 40 | 0 | 0 |
 | `services/clinics-service` | 7 | 0 | 0 |
 | `services/users-service` | 15 | 0 | 2 |
-| `services/appointments-service` | 168 | 0 | 0 |
+| `services/appointments-service` | 186 | 0 | 0 |
 | `services/audit-service` | 28 | 0 | 0 |
-| **Total** | **491** | **0** | **2** |
+| **Total** | **509** | **0** | **2** |
 
 The two skipped tests of users-service create users in a disposable Keycloak realm
 (`J2_TEMP_REALM=1`) that only exists on the machine of whoever runs them. What they
@@ -132,6 +132,12 @@ end-to-end stage.
 I3 remains limited by later schedule edits, and I8 by asynchronous invalidation
 and failures across replicas; see [concurrency](concurrency.md) and [cache](cache.md).
 These tests do not establish either invariant unconditionally.
+
+**Least-privilege database roles** (core module 5): every request runs as the database role
+of its actor. appointments `integration/db-roles.test.ts` checks the privilege matrix of
+each role and that a booking fails when its actor's role loses `INSERT` while the
+administrator's still works; db `integration/tenant-tx.test.ts` checks that reception and
+administration cannot read clinical notes at engine level.
 
 ## Acceptance criteria of the statement
 

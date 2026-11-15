@@ -187,14 +187,14 @@ reads without clinic context, so this is not a blanket rule for every table.
 ### RLS Policy Matrix by Entity and Role
 
 Domain tables enable and force RLS. `FORCE` includes ordinary owners, but superusers
-and roles with `BYPASSRLS` bypass it. The matrix describes SQL policies/grants for
-`medicitas_app`, not HTTP endpoints; see the [API contract](api.md) for exposed actions.
+and roles with `BYPASSRLS` bypass it. The matrix combines SQL policies with the
+actor-role grants below. HTTP actions are in the [API contract](api.md).
 
 | Database | Table | platform_admin | clinic_admin | receptionist | professional |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Clinics DB** | `clinic` | Full CRUD | Read/update own clinic | Read own clinic | Read own clinic |
 | | `specialty` | Full CRUD | Read-only | Read-only | Read-only |
-| | `service` | Read/insert/update | Read/insert/update own clinic | Read-only for own clinic | Read-only for own clinic |
+| | `service` | SQL CRUD | SQL CRUD in own clinic | Read-only for own clinic | Read-only for own clinic |
 | **Users DB** | `role` | Read-only | Read-only | Read-only | Read-only |
 | | `app_user` | Read/insert/update; first-admin bootstrap | Read/insert/update own clinic (non-platform admins) | Read clinic | Read clinic |
 | | `professional`| Global read/insert/update | Read/insert/update own clinic | Read-only for own clinic | Read clinic / Update own profile |
@@ -203,22 +203,45 @@ and roles with `BYPASSRLS` bypass it. The matrix describes SQL policies/grants f
 | | `schedule_block`| **No access** | CRUD for own clinic | Read-only for own clinic | CRUD for own leaves/blocks |
 | | `appointment` | **No access** | Read/insert/update own clinic | Read/insert/update own clinic | Read clinic / Update own appointments |
 | | `clinical_note` | **No access** | **No access** | **No access** | Read/insert/update own notes; API requires an attended appointment to create |
-| **Logs DB** | `audit_log` | Insert only | Read/insert own clinic | Insert own clinic | Insert own clinic |
+| **Logs DB** | `audit_log` | No access | Read own clinic | No access | No access |
 
-Audit INSERT policies support producers/relay; HTTP exposes only the clinic-admin
-query. SQL denies deletion of users, professionals, patients, appointments and notes.
+The audit relay inserts under `medicitas_app`; HTTP exposes only the clinic-admin
+query. The service API retires services with `is_active`; the `db_admin` SQL grant
+still allows DELETE. SQL denies deletion of users, professionals, patients,
+appointments and notes.
 `app_user` also has a self-read exception by `app_user_id`; domain handlers add clinic
 predicates for managed targets. RLS does not replace field-level business validation.
 
 ---
 
-### Least Privilege Database Role (`medicitas_app`)
+### Least-privilege database roles
 
-Each database defines an application role `medicitas_app`:
-- It is neither a superuser nor an owner of the schema.
-- SQL also defines `db_admin`, `db_receptionist` and `db_professional`. Current domain handlers select `medicitas_app` for all actors; RLS uses the domain role in the transaction context.
-- Compose connects with each database's `POSTGRES_USER`, then handlers switch role. This development login is privileged; protection depends on using the restricted role. Relays use `medicitas_relay` for the outbox.
-- In `logs_db`, it only has `SELECT` and `INSERT` permissions (strictly append-only, denying `UPDATE` and `DELETE` at the engine permission level).
+Domain handlers pass `MEDICITAS_DB_ROLES` to `withTenantTx`, which runs
+`SET LOCAL ROLE` according to the verified token:
+
+| Actor (token) | Database role |
+| --- | --- |
+| `clinic_admin`, `platform_admin` | `db_admin` |
+| `receptionist` | `db_receptionist` |
+| `professional` | `db_professional` |
+
+These roles have no `BYPASSRLS` and do not own the schema. Grants limit the allowed
+commands; RLS limits the rows, as summarized in the matrix above. In particular,
+`db_admin` and `db_receptionist` cannot read clinical notes. Domain roles only insert
+into the outboxes; `medicitas_relay` reads and marks their events. The audit relay
+uses `medicitas_app` to append to `logs_db.audit_log`.
+
+Compose connects with each database's privileged `POSTGRES_USER`, then handlers
+switch role. The login must be allowed to assume the required roles; the init
+scripts grant them to their owner. A separate login needs membership grants for
+the roles it uses. `SET LOCAL ROLE` and identity context end with the transaction.
+
+The [actor-role tests](../services/appointments-service/tests/integration/db-roles.test.ts)
+check the privilege matrix and that revoking reception's `INSERT` stops its bookings
+while an administrator can still book. Existing `users_db` volumes need the current
+[patient outbox](../database/updates/users/upgrade-patient-audit-outbox.sql) and
+[first-admin](../database/updates/users/upgrade-first-admin.sql) updates to grant the
+actor roles access to those operations; new databases include them in `init.sql`.
 
 ---
 

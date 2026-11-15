@@ -16,7 +16,7 @@ ya tiene los campos del alta inicial. Los volúmenes existentes conservan su esq
 | Cambio en una base existente | Archivo SQL |
 | --- | --- |
 | Campos del administrador pendiente de la clínica | [upgrade-registration.sql](../database/updates/clinics/upgrade-registration.sql) |
-| `is_active` de servicios y retiro del permiso DELETE | [upgrade-service-soft-delete.sql](../database/updates/clinics/upgrade-service-soft-delete.sql) |
+| `is_active` de servicios y retiro de DELETE a `medicitas_app` | [upgrade-service-soft-delete.sql](../database/updates/clinics/upgrade-service-soft-delete.sql) |
 | `is_first_admin` e índice único parcial | [upgrade-first-admin.sql](../database/updates/users/upgrade-first-admin.sql) |
 | Outbox de contacto y luego acceso del relay | [upgrade-patient-audit-outbox.sql](../database/updates/users/upgrade-patient-audit-outbox.sql), luego [upgrade-audit-relay.sql](../database/updates/users/upgrade-audit-relay.sql) |
 | Límite de duración de cita e índices | [appointments/upgrade-e10-indexes.sql](../database/updates/appointments/upgrade-e10-indexes.sql) |
@@ -30,6 +30,9 @@ predeterminado `gen_random_uuid()`. Una base nueva usa PK (`clinic_id`, `event_i
 y `uuidv7()`. `CREATE TABLE IF NOT EXISTS` conserva la tabla que ya exista; ninguno
 de los upgrades convierte esa clave o valor predeterminado al formato nuevo.
 Las demás tablas y columnas requeridas deben existir antes de aplicar estos ajustes.
+
+Para actualizar permisos en volúmenes existentes de `users_db`, vea los
+[roles de base](database.es.md#roles-de-base-con-menor-privilegio).
 
 Los archivos Drizzle son mapeos de consultas, no el DDL completo. Por ejemplo,
 `is_first_admin` se usa mediante SQL directo y `appointment_status` toma su valor

@@ -1,5 +1,5 @@
 import { and, asc, eq, gte, lt } from 'drizzle-orm';
-import { assertTenantContext, MEDICITAS_APP_ROLE, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
+import { assertTenantContext, MEDICITAS_DB_ROLES, withTenantTx, type Database, type TenantContext } from '@medicitas/db';
 import { auditLog } from '../../db/schema.ts';
 import { auditQueryFilters, AuditQueryValidationError } from './audit-query.schemas.ts';
 
@@ -28,5 +28,5 @@ export async function queryAuditLogs(
       filters.to === undefined ? undefined : lt(auditLog.occurredAt, new Date(filters.to)),
     ))
     .orderBy(asc(auditLog.occurredAt), asc(auditLog.auditLogId)),
-  { dbRoles: MEDICITAS_APP_ROLE, accessMode: 'read only' });
+  { dbRoles: MEDICITAS_DB_ROLES, accessMode: 'read only' });
 }

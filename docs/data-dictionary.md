@@ -16,7 +16,7 @@ databases already have the onboarding fields. Existing volumes keep their schema
 | Existing database change | SQL file |
 | --- | --- |
 | Clinic pending administrator fields | [upgrade-registration.sql](../database/updates/clinics/upgrade-registration.sql) |
-| Service `is_active` and DELETE grant removal | [upgrade-service-soft-delete.sql](../database/updates/clinics/upgrade-service-soft-delete.sql) |
+| Service `is_active` and DELETE revoked from `medicitas_app` | [upgrade-service-soft-delete.sql](../database/updates/clinics/upgrade-service-soft-delete.sql) |
 | User `is_first_admin` and partial unique index | [upgrade-first-admin.sql](../database/updates/users/upgrade-first-admin.sql) |
 | Patient audit outbox, then relay access | [upgrade-patient-audit-outbox.sql](../database/updates/users/upgrade-patient-audit-outbox.sql), then [upgrade-audit-relay.sql](../database/updates/users/upgrade-audit-relay.sql) |
 | Appointment duration limit and indexes | [appointments/upgrade-e10-indexes.sql](../database/updates/appointments/upgrade-e10-indexes.sql) |
@@ -30,6 +30,9 @@ The users outbox upgrade, when it creates the table, uses PK `event_id` and defa
 `CREATE TABLE IF NOT EXISTS` preserves whichever table already exists; neither
 upgrade converts that key/default to the new form. The other required tables and
 columns must already exist before applying these targeted updates.
+
+For updated grants on existing `users_db` volumes, see
+[database roles](database.md#least-privilege-database-roles).
 
 Drizzle files are query mappings, not complete DDL. For example, `is_first_admin`
 is accessed by raw SQL and `appointment_status` uses its SQL default; neither
