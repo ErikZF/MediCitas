@@ -137,6 +137,7 @@ invariante: [informe de pruebas](docs/test-report.es.md).
 | Modelo de datos: diccionario y 3FN | [docs/data-model.es.md](docs/data-model.es.md) | [docs/data-model.md](docs/data-model.md) |
 | Arquitectura multi-tenancy | [docs/multitenancy.es.md](docs/multitenancy.es.md) | [docs/multitenancy.md](docs/multitenancy.md) |
 | Comparación de multi-tenancy | [docs/database-comparison.es.md](docs/database-comparison.es.md) | [docs/database-comparison.md](docs/database-comparison.md) |
+| RLS frente a la columna discriminadora, medido | [docs/rls-comparison.es.md](docs/rls-comparison.es.md) | [docs/rls-comparison.md](docs/rls-comparison.md) |
 | Identidad con Keycloak | [docs/keycloak.es.md](docs/keycloak.es.md) | [docs/keycloak.md](docs/keycloak.md) |
 | Datos semilla de demo | [docs/seed-data.es.md](docs/seed-data.es.md) | [docs/seed-data.md](docs/seed-data.md) |
 | Concurrencia: el último espacio | [docs/concurrency.es.md](docs/concurrency.es.md) | [docs/concurrency.md](docs/concurrency.md) |

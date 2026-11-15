@@ -49,3 +49,6 @@ Downsides:
 ## Taken Decision
 
 We decided to only implement RLS, as it is enough to enforce security, while having the least performance lost.
+
+The measured comparison of RLS against the discriminator column alone, on the same
+queries and with the same leak attempts, is in [rls-comparison.md](rls-comparison.md).

@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "measure:availability": "node scripts/measure-availability.ts",
-    "explain:indexes": "node scripts/explain-indexes.ts"
+    "explain:indexes": "node scripts/explain-indexes.ts",
+    "measure:rls": "node scripts/measure-rls.ts"
   },
   "dependencies": {
     "@medicitas/auth": "*",
