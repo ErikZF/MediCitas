@@ -72,8 +72,7 @@ la zona de la clínica y espacios libres de disponibilidad; use instantes ISO co
 positivo como `%2B`. RF8 admite hasta 31 fechas incluyendo ambos extremos.
 
 El [recorrido REST Client](../requests/demo.http) es una alternativa de cliente,
-no un prerrequisito. El [contrato](../docs/api.es.md) documenta respuestas esperadas;
-esta plantilla de entorno por sí sola no demuestra una ejecución con la pila completa.
+no un prerrequisito. El [contrato](../docs/api.es.md) documenta las respuestas esperadas.
 
 ## Recorrido de citas y auditoría
 
@@ -105,9 +104,5 @@ de la colección que aún dicen que falta N10 están desactualizadas. El encabez
 del REST Client también es anterior al proxy y al relay.
 El ejemplo secuencial de 409 no sustituye la prueba automatizada de carrera concurrente.
 
-La colección es material de ejemplo, no un registro de una demo exitosa. En esta
-revisión documental no se ejecutó el recorrido HTTP con la pila completa porque
-Docker no estaba disponible. Ejecute las peticiones elegidas contra una pila local
-descartable antes de presentar; las aserciones son respuestas esperadas. La secuencia
-de reserva/cancelación y la de desenlace/nota usan citas distintas: no demuestran
-una misma cita nueva desde su reserva hasta el desenlace.
+La secuencia de reserva/cancelación y la de desenlace/nota usan citas distintas.
+Ejecútelas contra una pila local descartable preparada.

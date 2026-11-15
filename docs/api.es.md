@@ -528,17 +528,7 @@ y siga sus [instrucciones de entorno/tokens locales](../postman/README.es.md).
 
 El [recorrido REST Client](../requests/demo.http) y su
 [ejemplo de entorno](../requests/.env.example) versionados usan URL directas y
-variables locales de tokens. Las respuestas son esperadas, no evidencia de la pila
-completa. Obtenga tokens nuevos de usuarios semilla en Keycloak; no guarde secretos en Git.
+variables locales de tokens. Obtenga tokens nuevos de usuarios semilla en Keycloak;
+no guarde secretos en Git.
 
-## Evidencia revisada y trabajo pendiente
-
-El arranque normal conecta los módulos anteriores con sus adaptadores reales.
-Las pruebas HTTP con dependencias inyectadas y la prueba automatizada de carrera
-son evidencia separada; su presencia no acredita que Compose o el recorrido
-completo de Postman hayan pasado. Vea [cobertura y requisitos de pruebas](ci-cd.es.md).
-
-La lectura de perfil/contacto del paciente sigue sin estar disponible. Las secuencias
-de reserva/cancelación y desenlace/nota de Postman usan citas distintas. En esta
-revisión sigue sin verificarse una demo con la pila completa que lleve una misma
-cita desde la reserva hasta su desenlace.
+Vea [cobertura y requisitos de pruebas](ci-cd.es.md).

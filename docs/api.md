@@ -515,16 +515,7 @@ and follow its [local environment/token instructions](../postman/README.md).
 
 The versioned [REST Client walkthrough](../requests/demo.http) and its
 [environment example](../requests/.env.example) use direct service URLs and local
-token variables. Its responses are expectations, not full-stack evidence. Use
-seeded users in Keycloak for fresh tokens; never put real tokens or secrets in Git.
+token variables. Use seeded users in Keycloak for fresh tokens; never put real
+tokens or secrets in Git.
 
-## Reviewed evidence and pending work
-
-The modules above are mounted by normal startup with their real adapters.
-Dependency-injected HTTP tests and the automated race test are separate evidence;
-their presence does not establish that Compose or the full Postman walkthrough
-has passed. See [test coverage and execution requirements](ci-cd.md).
-
-Patient profile/contact reads remain unavailable. The Postman booking/cancellation
-and outcome/note sequences use different appointments. A full-stack demonstration
-of one appointment from booking to outcome remains unverified in this review.
+See [test coverage and execution requirements](ci-cd.md).

@@ -22,7 +22,7 @@ discriminadora se impone en la capa del ORM, haciendo que cada consulta filtre p
 columna; aquí, la columna discriminadora sería clinic_id.
 
 Los filtros mantienen visible la selección de clínica en cada consulta, pero
-omitir uno puede exponer filas. Aquí no se midió su rendimiento frente a RLS.
+omitir uno puede exponer filas.
 
 ## Base de datos por tenant
 

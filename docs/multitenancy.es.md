@@ -5,8 +5,7 @@
 Cada clínica es un tenant en bases de servicio compartidas. Los claims verificados,
 el contexto transaccional, RLS y las claves de caché por clínica sostienen el
 aislamiento (I5). El gateway reenvía peticiones y los servicios de dominio las
-autentican. Los manifiestos Kubernetes describen un despliegue opcional, no una
-prueba de aislamiento ejecutada.
+autentican. Los manifiestos Kubernetes describen un despliegue opcional.
 
 > Documentos relacionados: [Arquitectura de Bases de Datos y RLS](database.es.md) · [Comparación de Multi-Tenancy](database-comparison.es.md) · [Identidad con Keycloak](keycloak.es.md) · [Caché de Disponibilidad](cache.es.md)
 

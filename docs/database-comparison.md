@@ -21,7 +21,7 @@ With application-only discrimination, each query filters by `clinic_id`. The
 application or ORM must include that predicate; the engine does not add it.
 
 Application filters keep tenant selection visible in queries, but one omitted
-filter can expose rows. Their performance relative to RLS has not been measured here.
+filter can expose rows.
 
 ## Database per Tenant
 

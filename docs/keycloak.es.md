@@ -63,7 +63,6 @@ MediCitas es una plataforma SaaS que atiende a varias clínicas (tenants):
 ### ¿Por qué un solo realm con claims personalizados?
 1. **Rendimiento sin estado**: los microservicios verifican la firma del JWT por su cuenta, usando el endpoint público JWKS de Keycloak (`/realms/Sistema_Clinico/protocol/openid-connect/certs`). Verificar un token no requiere consultas a la base.
 2. **Administración**: un realm reúne roles, clientes y mappers en una configuración.
-   No se midió el rendimiento frente a usar un realm por tenant.
 3. **Administración de plataforma sencilla**: un `platform_admin` (con `clinic_id: null`) puede administrar clínicas de toda la plataforma sin necesitar una federación de confianza compleja entre realms.
 
 ---
@@ -182,8 +181,7 @@ npm test -w packages/auth
 ```
 
 Estas unitarias ejercitan validación de tokens, roles y claims con llaves RS256 en
-memoria y un servidor JWKS simulado. No acreditan un login real contra Keycloak ni
-una ejecución completa de Compose.
+memoria y un servidor JWKS simulado.
 
 La URL interna de JWKS debe ser alcanzable desde el servicio; el issuer debe
 coincidir con la URL que emitió el token. RF1/RF2 usan el cliente confidencial
@@ -194,4 +192,4 @@ y contraseñas existentes. Reiniciar no actualiza todas las cuentas existentes.
 Los servicios verifican JWT localmente tras obtener las llaves: la mayoría de las
 rutas no vuelve a comprobar rol/estado en `users_db`. Cerrar sesiones en Keycloak
 no hace que un JWT ya emitido falle la validación de firma y expiración. Tras cambiar
-un rol, obtenga tokens nuevos; no se verificó revocación inmediata en todas las rutas.
+un rol, obtenga tokens nuevos.

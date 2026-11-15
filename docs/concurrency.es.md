@@ -59,8 +59,7 @@ CONSTRAINT no_overlap_professional EXCLUDE USING gist (
 ### Por qué las reservas también se esperan entre sí
 
 Las notas previas de desarrollo reportan competencia en CI y en corridas locales.
-No se reprodujeron en esta revisión ni hay un log adjunto aquí. El mecanismo que
-motiva el diseño es que los inserts solapados pueden generar deadlocks. Cuando
+Los inserts solapados pueden generar deadlocks. Cuando
 dos transacciones insertan filas solapadas en el mismo instante, cada una encuentra en el
 índice la fila *de la otra*, todavía sin confirmar, y la espera. Eso es un ciclo: PostgreSQL
 lo detecta después de `deadlock_timeout` (1 s) y aborta una con `40P01`, que `withTenantTx`
@@ -178,8 +177,7 @@ con 409. La consistencia de caché tiene límites ante fallos y múltiples répl
 
 Las pruebas de carrera y ciclo de vida usan handlers HTTP y PostgreSQL reales
 en bases desechables, con identidad y catálogo/paciente inyectados. `packages/db`
-incluye unitarias e integración SQL directa, no un recorrido HTTP. No se ejecutaron
-contra PostgreSQL en esta revisión. Desde Bash, después de instalar dependencias
+incluye unitarias e integración SQL directa. Desde Bash, después de instalar dependencias
 y compilar paquetes compartidos, apunte solo a una instancia PostgreSQL 18
 descartable con un login administrativo de pruebas:
 

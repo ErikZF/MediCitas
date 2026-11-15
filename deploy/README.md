@@ -3,8 +3,7 @@
 # MediCitas Kubernetes Deployment
 
 Optional local Kubernetes deployment using Kustomize and Kind, with Bash and
-PowerShell scripts. Compose is the Stage 1 startup path. This review checked
-manifests and script syntax; no cluster was deployed.
+PowerShell scripts. Compose is the Stage 1 startup path.
 
 Deployment scripts delete the existing Kind cluster named `medicitas` by default,
 including its data. Use only a disposable local cluster. `--keep-cluster` (Bash)
@@ -196,7 +195,7 @@ It consumes a started booking of dr.mora (804 first, otherwise one found in the
 last 45 days), records its outcome and creates a note. Repeated runs require
 remaining eligible seed bookings; they are not indefinitely repeatable. Booking/cancellation and outcome use different
 appointments. It is not the automated simultaneous last-slot race or proof of all
-routes/invariants. Its presence is not a successful run record. Defaults: gateway
+routes/invariants. Defaults: gateway
 3000, Keycloak 8080, realm `Sistema_Clinico`, client `integration-tests`, namespace
 `medicitas`; the test password comes from the environment or overlay secrets file.
 

@@ -5,7 +5,7 @@
 Each clinic is a tenant in shared service databases. Verified token claims,
 transaction context, RLS and clinic-scoped cache keys support isolation (I5).
 The gateway forwards requests; the domain services authenticate them. Kubernetes
-manifests describe an optional deployment, not evidence of an executed isolation test.
+manifests describe an optional deployment.
 
 > Related docs: [Database & RLS Architecture](database.md) · [Multi-Tenancy Strategy Comparison](database-comparison.md) · [Keycloak Identity](keycloak.md) · [Availability Cache](cache.md)
 

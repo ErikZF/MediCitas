@@ -3,8 +3,7 @@
 # Despliegue en Kubernetes de MediCitas
 
 Despliegue local opcional con Kubernetes, Kustomize y Kind, con scripts Bash y
-PowerShell. Compose es el arranque de Etapa 1. Esta revisión comprobó manifiestos
-y sintaxis de scripts; no desplegó un clúster.
+PowerShell. Compose es el arranque de Etapa 1.
 
 Los scripts borran por defecto el clúster Kind existente `medicitas`, incluidos
 sus datos. Úselos solo en un clúster local descartable. `--keep-cluster` (Bash)
@@ -198,7 +197,7 @@ Consume una reserva ya iniciada de dr.mora (804 primero; si no, busca una en los
 últimos 45 días), registra su desenlace y crea una nota. Repetirlo requiere
 reservas semilla elegibles; no se puede ejecutar indefinidamente. Reserva/cancelación y desenlace usan
 citas distintas. No sustituye la carrera simultánea automatizada ni acredita
-todas las rutas/invariantes. Su existencia no registra una ejecución exitosa.
+todas las rutas/invariantes.
 Valores predeterminados: gateway 3000, Keycloak 8080, realm `Sistema_Clinico`,
 cliente `integration-tests`, namespace `medicitas`; la contraseña de pruebas se
 toma del entorno o del archivo de secretos del overlay.

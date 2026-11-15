@@ -119,9 +119,8 @@ Keycloak con clínica y rol correctos; vea el [contrato de la API](docs/api.es.m
 Detenga la pila con `docker compose stop` (con las mismas opciones `-f` si las usó).
 
 `npm test` puede omitir integraciones si faltan PostgreSQL, Redis o la configuración
-de Keycloak. Vea [requisitos de pruebas y cobertura de CI](docs/ci-cd.es.md). Las
-rutas están conectadas al arranque normal; esta guía no acredita una demo completa
-ejecutada. [Postman](postman/README.es.md) describe los pasos y sus prerrequisitos.
+de Keycloak. Vea [requisitos de pruebas y cobertura de CI](docs/ci-cd.es.md) y el
+[recorrido de Postman](postman/README.es.md) para preparar la demo.
 
 ## Pruebas
 

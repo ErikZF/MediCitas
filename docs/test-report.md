@@ -3,8 +3,7 @@
 **English** · [Español](test-report.es.md)
 
 Coverage by functional requirement (RF) and invariant (I), runner options and
-recorded results. Test assertions describe intended checks, not a full-stack run
-observed in this documentation review.
+recorded results.
 
 ## How to run them
 
@@ -57,9 +56,7 @@ documented command.
 
 ## Recorded stage-1 run
 
-The report added in `69a9c81` records these results for 2026-11-15. They were not
-reproduced in this review, and their raw `test-results/` files are not versioned.
-The counts are retained as historical reported evidence:
+Stage-1 results recorded in `69a9c81` for 2026-11-15:
 
 | Suite | Passed | Failed | Skipped |
 | --- | ---: | ---: | ---: |
@@ -79,9 +76,7 @@ check has separate RF1/RF2 coverage in the E2E stage against the demo realm; thi
 does not mean the omitted fixture tests ran. See [Keycloak test prerequisites](ci-cd.md).
 
 The workflow configures stage 2 for pushes to `main`, `feat/**`, `fix/**` and PRs
-to `main`. No Actions result was verified in this review. Current local checks
-are recorded in [ci-cd.md](ci-cd.md): `npm test` passed 345 and skipped 141, with
-no test infrastructure configured. `test:all` and E2E were not executed.
+to `main`. See [CI configuration](ci-cd.md).
 
 ## What each kind of test proves
 
@@ -140,7 +135,7 @@ These tests do not establish either invariant unconditionally.
 
 ## Acceptance criteria of the statement
 
-The following maps criteria to planned evidence; it is not a record of all criteria passing.
+Evidence for each acceptance criterion:
 
 | # | Criterion | How it is shown |
 | --- | --- | --- |

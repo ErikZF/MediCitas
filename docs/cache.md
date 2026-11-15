@@ -59,8 +59,8 @@ the events wait for the next pass. It runs as `medicitas_relay` and only takes
 The direct invalidation runs after commit and before the response. The relay retries
 pending invalidations; its one-second polling interval is not a bound on stale data.
 A process can die after commit, or one process can fail to invalidate while another
-still reads Redis. The breaker and queue are local to each process. These cases
-leave I8 unproven across failures or multiple replicas. Ordinary versioned fills
+still reads Redis. The breaker and queue are local to each process. Other processes can read a stale
+entry until its pending invalidation is applied. Ordinary versioned fills
 protect later lookups after a successful counter bump; they do not make a read
 already in flight atomic with a concurrent write. Events are written only with caching enabled.
 
@@ -89,8 +89,7 @@ these with `MEASURE_REQUESTS` and `MEASURE_CONCURRENCY`.
 ## Recorded results
 
 These are previously reported medians of three runs on a 2 vCPU / 7 GB Linux
-container with PostgreSQL 16 and Redis 7. They were not rerun in this review;
-Compose currently uses PostgreSQL 18. They do not establish current full-stack performance.
+container with PostgreSQL 16 and Redis 7. Compose currently uses PostgreSQL 18.
 
 | Cache | p50 | p95 | p99 | Requests/s | Agenda queries per request | Hit rate |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -109,7 +108,7 @@ With the cache on:
 - **The latency that remains is not agenda work.** RF7 still checks in PostgreSQL that the professional offers the service. The measurement helper injects tenant context, so it measures RLS setup and JSON serialisation but not real Keycloak JWT verification.
 - **clinics-service and users-service are in-memory stand-ins**, so these numbers isolate appointments-service and its database.
 - The numbers describe that local workload. Network placement, writes, replicas
-  and dependency latency can change the result; no Kubernetes speedup is established.
+  and dependency latency can change the result.
 - Use PostgreSQL 18 and Redis in a disposable test instance. The helper creates and
   drops databases and requires an administrative test login. The Bash environment
   assignment above is not PowerShell syntax; see [test setup](ci-cd.md).

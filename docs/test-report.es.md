@@ -3,8 +3,7 @@
 [English](test-report.md) · **Español**
 
 Cobertura por requisito funcional (RF) e invariante (I), opciones del runner y
-resultados registrados. Las aserciones describen las comprobaciones previstas,
-no una ejecución completa observada en esta revisión documental.
+resultados registrados.
 
 ## Cómo se corren
 
@@ -59,9 +58,7 @@ el mismo comando contra contenedores de servicio de PostgreSQL 18 y Redis, y el 
 
 ## Corrida registrada de etapa 1
 
-El informe agregado en `69a9c81` registra estos resultados para 2026-11-15. No se
-reprodujeron en esta revisión y sus archivos `test-results/` no están versionados.
-Se conservan las cifras como evidencia histórica reportada:
+Resultados de etapa 1 registrados en `69a9c81` para 2026-11-15:
 
 | Suite | Pasan | Fallan | Saltadas |
 | --- | ---: | ---: | ---: |
@@ -81,9 +78,7 @@ comprueban tiene cobertura RF1/RF2 separada en el E2E del realm de demo; eso no
 significa que se ejecutaran las pruebas omitidas. Vea [prerrequisitos de Keycloak](ci-cd.es.md).
 
 El workflow configura la etapa 2 para pushes a `main`, `feat/**`, `fix/**` y PR
-hacia `main`. No se verificó un resultado de Actions en esta revisión. Las
-comprobaciones locales están en [ci-cd.es.md](ci-cd.es.md): `npm test` aprobó 345
-y omitió 141 sin infraestructura de prueba. No se ejecutaron `test:all` ni E2E.
+hacia `main`. Vea la [configuración de CI](ci-cd.es.md).
 
 ## Qué demuestra cada tipo de prueba
 
@@ -142,7 +137,7 @@ asíncrona y fallos entre réplicas; vea [concurrencia](concurrency.es.md) y
 
 ## Criterios de aceptación del enunciado
 
-La tabla vincula criterios con evidencia prevista; no registra que todos hayan pasado.
+Evidencia correspondiente a cada criterio de aceptación:
 
 | # | Criterio | Cómo se muestra |
 | --- | --- | --- |

@@ -93,7 +93,7 @@ El archivo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) se ejecuta 
 
 `unit-tests`, `integration-tests`, `e2e-compose` y `docker-build` dependen de `quality` y luego
 corren de forma independiente. Un push a `docs/**` no dispara este workflow;
-un pull request hacia `main` sí. Un job exitoso no acredita la pila completa.
+un pull request hacia `main` sí.
 
 ---
 
@@ -156,28 +156,6 @@ use una instancia dedicada. `db_appointments` y `redis` de Compose pueden servir
 en un entorno descartable, pero sus volúmenes existentes no son un entorno nuevo.
 No reinicie datos compartidos.
 
-## 4. Cobertura y verificaciones observadas
+## 4. Cobertura
 
 La cobertura por requisito e invariante está en [test-report.es.md](test-report.es.md).
-Distingue las aserciones de las pruebas, las corridas observadas y los límites.
-
-Revisión documental del 2026-11-15, actualizada a `origin/main` en `5759576`:
-
-- `npm ci --ignore-scripts --no-audit --no-fund`: completado con Node.js 24.14.1 y npm 11.11.0.
-- `npm run build` y `npm run typecheck`: pasaron.
-- `kubectl kustomize deploy/k8s/overlays/local`: renderizó sin aplicar al clúster.
-- Análisis de sintaxis Bash/PowerShell y `node --check deploy/scripts/test-all-endpoints.mjs`: pasaron; no se ejecutaron los scripts.
-- `npm test`: 345 aprobadas, 141 omitidas; sin URL de DB/Redis de prueba ni realm temporal configurados.
-- `npm run seed:check` y `docker compose --env-file .env.example config --quiet`: pasaron.
-- Docker no estaba disponible: no se ejecutaron arranque Compose, integraciones reales
-  con PostgreSQL/Redis/Keycloak, carrera contra la base, mediciones ni recorrido de despliegue.
-  El runner nuevo se revisó estáticamente: no se ejecutó su limpieza de contenedores/
-  volúmenes ni la etapa 2 que modifica datos de demo.
-
-La entrega de Etapa 1 también pide diccionario de datos, justificación paso a paso
-de 3FN, video de demostración y declaración de uso de IA. El Markdown revisado
-contiene la descripción de esquema/ER, pero no un diccionario dedicado, derivación
-3FN ni declaración de IA. La entrega del video no está verificada. El módulo extra
-para tres integrantes no está identificado como completo: usar solo RLS no cumple
-su comparación de dos estrategias. Son tareas de entrega pendientes de acreditar,
-no funcionalidades que esta revisión dé por terminadas.

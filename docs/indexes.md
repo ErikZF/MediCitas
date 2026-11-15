@@ -27,8 +27,7 @@ It then runs each query **as `medicitas_app` with the clinic context loaded**, s
 policies are part of the plan, exactly as in production. Each query runs twice: with the
 indexes and query text from before E10, and with the current ones. Times are the median of
 5 previously recorded runs on a 2 vCPU container with PostgreSQL 16. Compose uses
-18; these measurements were not repeated here, so matching plans/timings on 18
-remain unverified. Buffers are 8 KB pages read from memory or disk. Use an
+18. Buffers are 8 KB pages read from memory or disk. Use an
 administrative login on a disposable PostgreSQL 18 test instance: the script
 creates and drops databases. The command uses Bash syntax.
 
@@ -153,7 +152,7 @@ because it starts with `clinic_id`: that was the 7 722-page scan.
 
 New databases get these indexes from `init.sql`. For a volume created before E10,
 review the upgrade scripts and back up its data before running them as schema owner
-(both are repeatable). These commands were not run in this documentation review:
+(both are repeatable):
 
 ```bash
 psql "$APPOINTMENTS_DB_URL" -f database/updates/appointments/upgrade-e10-indexes.sql

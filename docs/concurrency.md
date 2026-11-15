@@ -58,9 +58,8 @@ CONSTRAINT no_overlap_professional EXCLUDE USING gist (
 
 ### Why bookings also wait for each other
 
-Earlier development notes report contention in CI and local runs. Those observations
-were not reproduced in this review and no run log is attached here. The mechanism
-behind the design is that overlapping inserts can deadlock: When two
+Earlier development notes report contention in CI and local runs. Overlapping
+inserts can deadlock: when two
 transactions insert overlapping rows at the same moment, each one finds the *other's*
 uncommitted row in the index and waits for it. That is a cycle: PostgreSQL detects it
 after `deadlock_timeout` (1 s) and aborts one with `40P01`, which `withTenantTx` retries.
@@ -175,8 +174,7 @@ fail with 409. Cache consistency has separate failure and multi-replica limits
 
 The race/lifecycle tests use real HTTP handlers and PostgreSQL on throwaway databases,
 with injected identity and catalog/patient dependencies. `packages/db` tests include
-unit and direct SQL integration checks, not an HTTP walkthrough. These tests were
-not run against PostgreSQL in this review. From Bash, after installing dependencies
+unit and direct SQL integration checks. From Bash, after installing dependencies
 and building shared packages, point only to a disposable PostgreSQL 18 instance
 with an administrative test login:
 

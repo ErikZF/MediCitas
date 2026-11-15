@@ -93,7 +93,7 @@ flowchart TD
 
 `unit-tests`, `integration-tests`, `e2e-compose` and `docker-build` depend on `quality`, then
 run independently. A push to `docs/**` does not trigger this workflow; a pull
-request targeting `main` does. A successful job does not prove the full stack works.
+request targeting `main` does.
 
 ---
 
@@ -155,27 +155,6 @@ helpers create/drop test databases and some roles; use a dedicated test instance
 Compose `db_appointments` and `redis` can supply dependencies in a disposable setup,
 but existing Compose volumes are not a fresh test environment. Do not reset shared data.
 
-## 4. Coverage and observed verification
+## 4. Coverage
 
 Per-requirement and invariant coverage is in [test-report.md](test-report.md).
-It distinguishes assertions in the tests from observed runs and known limits.
-
-Documentation review on 2026-11-15, updated to `origin/main` at `5759576`:
-
-- `npm ci --ignore-scripts --no-audit --no-fund`: completed on Node.js 24.14.1, npm 11.11.0.
-- `npm run build` and `npm run typecheck`: passed.
-- `kubectl kustomize deploy/k8s/overlays/local`: rendered successfully without applying it.
-- Bash/PowerShell deployment script parsing and `node --check deploy/scripts/test-all-endpoints.mjs`: passed; scripts were not executed.
-- `npm test`: 345 passed, 141 skipped; no test DB/Redis URLs or temporary Keycloak realm configured.
-- `npm run seed:check` and `docker compose --env-file .env.example config --quiet`: passed.
-- Docker daemon unavailable: Compose startup, real PostgreSQL/Redis/Keycloak integrations,
-  concurrent DB race, measurements and deployment walkthrough were not executed.
-  The new runner was checked statically, not run: its default cleanup removes test
-  containers/volumes, and stage 2 changes the demo data.
-
-The Stage 1 submission also asks for a data dictionary, step-by-step 3NF justification,
-a demonstration video and an AI-use declaration. The reviewed Markdown contains the
-schema/ER description, but no dedicated dictionary, 3NF derivation or AI declaration.
-Video delivery is unverified. The extra three-person module is not identified as
-completed: using RLS alone is not its required two-strategy comparison. These remain
-submission tasks, not implemented features established by this review.

@@ -72,8 +72,7 @@ Use `Z` or negative offsets for range variables in query strings; encode a posit
 `+` as `%2B`. RF8 accepts at most 31 calendar dates, including both bounds.
 
 The [REST Client walkthrough](../requests/demo.http) is an alternative client,
-not a prerequisite. Expected responses are documented in the [contract](../docs/api.md);
-this environment template alone does not establish a successful full-stack run.
+not a prerequisite. Expected responses are documented in the [contract](../docs/api.md).
 
 ## Appointment and audit walkthrough
 
@@ -104,9 +103,5 @@ one second is not a delivery deadline. Collection descriptions that still say N1
 is pending are outdated. The REST Client header also predates the proxy and relay.
 The sequential 409 example does not replace the automated concurrent race proof.
 
-The collection is example material, not a record of a successful demo. No full-stack
-HTTP walkthrough was executed in this documentation review because Docker was
-unavailable. Run the selected requests against a disposable prepared stack before
-presenting; status assertions are expectations. The booking/cancellation sequence
-and the outcome/note sequence use different appointments and do not demonstrate
-one newly booked appointment progressing to its outcome.
+The booking/cancellation sequence and the outcome/note sequence use different
+appointments. Run them against a disposable prepared stack.

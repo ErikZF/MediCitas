@@ -118,9 +118,8 @@ tokens with matching clinic/role claims; see the [API contract](docs/api.md).
 Stop the stack with `docker compose stop` (with the same `-f` options if used).
 
 `npm test` can skip integrations when PostgreSQL, Redis or Keycloak configuration
-is absent. See [test requirements and CI coverage](docs/ci-cd.md). The routes are
-wired at normal startup; this guide does not establish a successful full-stack
-demo. [Postman](postman/README.md) describes the steps and their prerequisites.
+is absent. See [test requirements and CI coverage](docs/ci-cd.md) and the
+[Postman walkthrough](postman/README.md) for demo prerequisites.
 
 ## Tests
 

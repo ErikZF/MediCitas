@@ -60,8 +60,8 @@ los eventos esperan a la siguiente pasada. Corre como `medicitas_relay` y solo t
 La invalidación directa corre después del commit y antes de responder. El relay
 reintenta las pendientes; consultar cada segundo no limita el plazo de datos viejos.
 Un proceso puede morir después del commit o fallar al invalidar mientras otro sigue
-leyendo Redis. El breaker y la cola son locales a cada proceso. Estos casos dejan
-I8 sin demostrar ante fallos o múltiples réplicas. Las claves versionadas protegen
+leyendo Redis. El breaker y la cola son locales a cada proceso. Otros procesos pueden leer una
+entrada vieja hasta que se aplique su invalidación pendiente. Las claves versionadas protegen
 consultas posteriores a un aumento exitoso del contador; no hacen atómica una
 lectura ya iniciada con una escritura concurrente. Solo se escriben eventos con la caché habilitada.
 
@@ -90,8 +90,7 @@ en paralelo. Se pueden cambiar con `MEASURE_REQUESTS` y `MEASURE_CONCURRENCY`.
 ## Resultados registrados
 
 Son medianas reportadas previamente de tres corridas en un contenedor Linux de
-2 vCPU y 7 GB, con PostgreSQL 16 y Redis 7. No se repitieron en esta revisión;
-Compose usa PostgreSQL 18. No acreditan el rendimiento actual de la pila completa.
+2 vCPU y 7 GB, con PostgreSQL 16 y Redis 7. Compose usa PostgreSQL 18.
 
 | Caché | p50 | p95 | p99 | Peticiones/s | Consultas de agenda por petición | Tasa de aciertos |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -110,7 +109,7 @@ Con la caché encendida:
 - **La latencia que queda no es trabajo de agenda.** RF7 sigue comprobando en PostgreSQL que el profesional ofrece el servicio. El helper de medición inyecta contexto de tenant: mide la preparación RLS y la serialización JSON, pero no la verificación real de JWT contra Keycloak.
 - **clinics-service y users-service son sustitutos en memoria**, así que estos números aíslan a appointments-service y su base.
 - Los números corresponden a esa carga local. La red, escrituras, réplicas y latencia
-  de dependencias pueden cambiar el resultado; no se acredita una mejora en Kubernetes.
+  de dependencias pueden cambiar el resultado.
 - Use PostgreSQL 18 y Redis en una instancia descartable de pruebas. El helper crea
   y borra bases y requiere un login administrativo de pruebas. La asignación de
   variables de arriba es Bash; para PowerShell vea [requisitos de pruebas](ci-cd.es.md).

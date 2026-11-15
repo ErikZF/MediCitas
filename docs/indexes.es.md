@@ -28,8 +28,7 @@ Después corre cada consulta **como `medicitas_app` y con el contexto de la clí
 así que las políticas RLS forman parte del plan, igual que en producción. Cada consulta corre
 dos veces: con los índices y el texto de consulta de antes de la E10, y con los actuales. Los
 tiempos son medianas de 5 corridas registradas previamente en un contenedor de
-2 vCPU con PostgreSQL 16. Compose usa 18; no se repitieron aquí, así que no se
-verificó que los planes ni tiempos coincidan en 18. Los buffers son páginas de
+2 vCPU con PostgreSQL 16. Compose usa 18. Los buffers son páginas de
 8 KB de memoria o disco. Use un login administrativo en una instancia PostgreSQL
 18 descartable: el script crea y borra bases. El comando usa sintaxis Bash.
 
@@ -154,7 +153,7 @@ que todavía no existe). Antes de la E10, el planificador incluso usaba
 
 Las bases nuevas reciben estos índices de `init.sql`. Para un volumen anterior a
 E10, revise los scripts y respalde los datos antes de ejecutarlos como dueño del
-esquema (ambos se pueden repetir). No se ejecutaron en esta revisión documental:
+esquema (ambos se pueden repetir):
 
 ```bash
 psql "$APPOINTMENTS_DB_URL" -f database/updates/appointments/upgrade-e10-indexes.sql
