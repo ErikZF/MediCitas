@@ -45,3 +45,6 @@ Desventajas:
 ## Decisión tomada
 
 Decidimos implementar solo RLS, porque alcanza para imponer la seguridad con la menor pérdida de rendimiento.
+
+La comparación medida de RLS contra la columna discriminadora sola, sobre las mismas
+consultas y con los mismos intentos de fuga, está en [rls-comparison.es.md](rls-comparison.es.md).

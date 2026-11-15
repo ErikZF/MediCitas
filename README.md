@@ -134,6 +134,7 @@ results and which test covers each requirement and invariant: [test report](docs
 | Data model: dictionary and 3NF | [docs/data-model.md](docs/data-model.md) | [docs/data-model.es.md](docs/data-model.es.md) |
 | Multi-tenancy architecture | [docs/multitenancy.md](docs/multitenancy.md) | [docs/multitenancy.es.md](docs/multitenancy.es.md) |
 | Multi-tenancy comparison | [docs/database-comparison.md](docs/database-comparison.md) | [docs/database-comparison.es.md](docs/database-comparison.es.md) |
+| RLS against the discriminator column, measured | [docs/rls-comparison.md](docs/rls-comparison.md) | [docs/rls-comparison.es.md](docs/rls-comparison.es.md) |
 | Identity with Keycloak | [docs/keycloak.md](docs/keycloak.md) | [docs/keycloak.es.md](docs/keycloak.es.md) |
 | Demo seed data | [docs/seed-data.md](docs/seed-data.md) | [docs/seed-data.es.md](docs/seed-data.es.md) |
 | Concurrency: the last slot | [docs/concurrency.md](docs/concurrency.md) | [docs/concurrency.es.md](docs/concurrency.es.md) |

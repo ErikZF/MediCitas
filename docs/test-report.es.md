@@ -60,9 +60,9 @@ Etapa 1, 2026-11-15, en la rama que agrega este informe:
 | `services/edge-gateway` | 40 | 0 | 0 |
 | `services/clinics-service` | 7 | 0 | 0 |
 | `services/users-service` | 15 | 0 | 2 |
-| `services/appointments-service` | 161 | 0 | 0 |
+| `services/appointments-service` | 168 | 0 | 0 |
 | `services/audit-service` | 28 | 0 | 0 |
-| **Total** | **484** | **0** | **2** |
+| **Total** | **491** | **0** | **2** |
 
 Las dos pruebas saltadas de users-service crean usuarios en un realm desechable de
 Keycloak (`J2_TEMP_REALM=1`) que solo existe en la máquina de quien las corre. Lo que
@@ -118,7 +118,7 @@ etapa de punta a punta.
 | **I2** Un paciente sin reservas traslapadas en una clínica | El mismo paciente con dos profesionales a la vez: un 201 y un 409 `patient_overlap`, también en concurrencia | appointments `race/test.ts`, `integration/booking.test.ts` |
 | **I3** Dentro del horario y fuera de los bloqueos | 422 fuera de horario o dentro de un bloqueo; una reserva y un bloqueo enviados juntos 60 veces: el bloqueo siempre reporta la reserva que le ganó | appointments `integration/booking.test.ts`, `race/block-vs-booking.test.ts` |
 | **I4** La duración la fija el servicio | El cuerpo no puede mandar el fin ni la duración (422); el fin siempre es el inicio más los minutos del servicio; `CHECK` en el esquema | appointments `integration/booking.test.ts` |
-| **I5** Ningún dato de una clínica alcanzable desde otra | Cada suite repite sus llamadas desde una segunda clínica (404 o vacío), incluidos ids, parámetros de consulta y encabezados manipulados; RLS probado sin el `WHERE` del código; las conexiones del pool no conservan contexto | db `integration/tenant-tx.test.ts`; appointments `integration/*` (booking, schedule, availability, lifecycle, clinical-note, daily-agenda, patient-history, counts); users `integration/patients.test.ts`, `user-management.test.ts`; clinics `integration/service-catalog.test.ts`; audit `integration/audit-query.test.ts`, `audit-append-only.test.ts`; auth `authorization.test.ts` |
+| **I5** Ningún dato de una clínica alcanzable desde otra | Cada suite repite sus llamadas desde una segunda clínica (404 o vacío), incluidos ids, parámetros de consulta y encabezados manipulados; RLS probado sin el `WHERE` del código; las conexiones del pool no conservan contexto. Los mismos intentos de fuga contra RLS y contra la columna sola ([rls-comparison.es.md](rls-comparison.es.md)) | db `integration/tenant-tx.test.ts`; appointments `integration/rls-vs-column.test.ts`, `integration/*` (booking, schedule, availability, lifecycle, clinical-note, daily-agenda, patient-history, counts); users `integration/patients.test.ts`, `user-management.test.ts`; clinics `integration/service-catalog.test.ts`; audit `integration/audit-query.test.ts`, `audit-append-only.test.ts`; auth `authorization.test.ts` |
 | **I6** La bitácora no se modifica desde la aplicación | El rol de la aplicación no puede hacer `UPDATE`, `DELETE` ni `TRUNCATE` (no tiene el privilegio), y los triggers rechazan los tres incluso al dueño de la tabla | audit `integration/audit-append-only.test.ts`, `integration/audit-relay.test.ts` |
 | **I7** Cancelar o reprogramar libera el espacio de inmediato | El espacio aparece libre en la siguiente consulta, también con caché | appointments `integration/lifecycle.test.ts`, `integration/availability-cache.test.ts` |
 | **I8** La disponibilidad nunca contradice la base | Reservar un espacio listado y volver a consultar: ya no aparece, sin esperar ningún vencimiento; lectores y escritores intercalados; invalidaciones perdidas recuperadas desde el outbox; con Redis caído se lee de PostgreSQL | appointments `integration/availability-cache.test.ts`, `integration/agenda-relay.test.ts`, `unit/agenda-cache.test.ts`; E2E "Redis cache invalidation" |

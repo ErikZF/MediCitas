@@ -59,9 +59,9 @@ Stage 1, 2026-11-15, on the branch that adds this report:
 | `services/edge-gateway` | 40 | 0 | 0 |
 | `services/clinics-service` | 7 | 0 | 0 |
 | `services/users-service` | 15 | 0 | 2 |
-| `services/appointments-service` | 161 | 0 | 0 |
+| `services/appointments-service` | 168 | 0 | 0 |
 | `services/audit-service` | 28 | 0 | 0 |
-| **Total** | **484** | **0** | **2** |
+| **Total** | **491** | **0** | **2** |
 
 The two skipped tests of users-service create users in a disposable Keycloak realm
 (`J2_TEMP_REALM=1`) that only exists on the machine of whoever runs them. What they
@@ -117,7 +117,7 @@ end-to-end stage.
 | **I2** No overlapping bookings for a patient in a clinic | Same patient with two professionals at once: one 201, one 409 `patient_overlap`, also concurrently | appointments `race/test.ts`, `integration/booking.test.ts` |
 | **I3** Inside working hours and outside blocks | 422 outside hours or inside a block; a booking and a block sent together 60 times: the block always reports the booking that beat it | appointments `integration/booking.test.ts`, `race/block-vs-booking.test.ts` |
 | **I4** Duration set by the service | The body cannot send the end or the duration (422); the end is always start + the service's minutes; `CHECK` in the schema | appointments `integration/booking.test.ts` |
-| **I5** No data of one clinic reachable from another | Every suite repeats its calls from a second clinic (404 or empty), including manipulated ids, query parameters and headers; RLS tested without the code's `WHERE`; pooled connections keep no context | db `integration/tenant-tx.test.ts`; appointments `integration/*` (booking, schedule, availability, lifecycle, clinical-note, daily-agenda, patient-history, counts); users `integration/patients.test.ts`, `user-management.test.ts`; clinics `integration/service-catalog.test.ts`; audit `integration/audit-query.test.ts`, `audit-append-only.test.ts`; auth `authorization.test.ts` |
+| **I5** No data of one clinic reachable from another | Every suite repeats its calls from a second clinic (404 or empty), including manipulated ids, query parameters and headers; RLS tested without the code's `WHERE`; pooled connections keep no context. The same leak attempts against RLS and against the column alone ([rls-comparison.md](rls-comparison.md)) | db `integration/tenant-tx.test.ts`; appointments `integration/rls-vs-column.test.ts`, `integration/*` (booking, schedule, availability, lifecycle, clinical-note, daily-agenda, patient-history, counts); users `integration/patients.test.ts`, `user-management.test.ts`; clinics `integration/service-catalog.test.ts`; audit `integration/audit-query.test.ts`, `audit-append-only.test.ts`; auth `authorization.test.ts` |
 | **I6** Audit log not modifiable by the application | The application role cannot `UPDATE`, `DELETE` or `TRUNCATE` it (no privilege), and triggers refuse all three even to the table owner | audit `integration/audit-append-only.test.ts`, `integration/audit-relay.test.ts` |
 | **I7** Cancelling or rescheduling frees the slot at once | The slot shows up free in the next query, also when cached | appointments `integration/lifecycle.test.ts`, `integration/availability-cache.test.ts` |
 | **I8** Availability never contradicts the database | Book a listed slot and query again: gone, without waiting for any expiry; interleaved readers and writers; lost invalidations recovered from the outbox; Redis down falls back to PostgreSQL | appointments `integration/availability-cache.test.ts`, `integration/agenda-relay.test.ts`, `unit/agenda-cache.test.ts`; E2E "Redis cache invalidation" |
