@@ -10,8 +10,8 @@ log database. Booking obtains catalog and patient information through injected
 dependencies before its database transaction, keeping external lookups outside
 that transaction. Those catalog, professional and patient lookups are implemented.
 
-Identity is delegated to Keycloak so the domain API does not manage login or
-credentials. At normal startup, domain services derive the clinic
+Keycloak handles login and stores credentials. User-management routes pass initial
+passwords to Keycloak; the domain API does not issue tokens or store passwords. At normal startup, domain services derive the clinic
 and role from the verified Bearer token. Permissions control actions, while PostgreSQL
 Row-Level Security (RLS) enforces clinic access within database transactions.
 The caller cannot select another tenant through request fields.

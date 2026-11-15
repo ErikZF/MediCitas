@@ -10,8 +10,8 @@ que está separada. La reserva obtiene datos del catálogo y del paciente median
 dependencias inyectadas antes de su transacción, de modo que las consultas externas
 quedan fuera de ella. Las consultas de catálogo, profesional y paciente ya existen.
 
-La identidad se delega en Keycloak, así que la API de dominio no maneja inicio de
-sesión ni credenciales. En el arranque normal, los servicios de dominio
+Keycloak gestiona el inicio de sesión y guarda las credenciales. Las rutas de
+usuarios le envían contraseñas iniciales; la API no emite tokens ni guarda contraseñas. En el arranque normal, los servicios de dominio
 derivan la clínica y el rol del Bearer verificado. Los permisos controlan las acciones,
 y Row-Level Security (RLS) de PostgreSQL impone el acceso por clínica dentro de las
 transacciones. Quien llama no puede elegir otro tenant mediante campos de la petición.

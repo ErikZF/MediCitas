@@ -2,9 +2,21 @@
 
 # Despliegue en Kubernetes de MediCitas
 
-Infraestructura de Kubernetes (base Kustomize + overlay local para Kind) y scripts multiplataforma para construir, desplegar y verificar toda la plataforma MediCitas localmente en **macOS**, **Linux** y **Windows**.
+Despliegue local opcional con Kubernetes, Kustomize y Kind, con scripts Bash y
+PowerShell. Compose es el arranque de Etapa 1. Esta revisión comprobó manifiestos
+y sintaxis de scripts; no desplegó un clúster.
+
+Los scripts borran por defecto el clúster Kind existente `medicitas`, incluidos
+sus datos. Úselos solo en un clúster local descartable. `--keep-cluster` (Bash)
+o `-KeepCluster` (PowerShell) lo reutiliza y reaplica las cargas; sigue siendo
+una modificación, no una comprobación de lectura.
 
 ## Arquitectura
+
+Se conserva el diagrama original. Sus puertos de dominio 3001-3004 y la flecha
+JWKS hacia el gateway están desactualizados: todos los servicios de dominio usan
+3000 internamente y verifican sus tokens. Los prefijos del gateway tienen
+excepciones para horarios, asociaciones e historial; vea la [API](../docs/api.es.md).
 
 ```mermaid
 flowchart LR
@@ -59,15 +71,15 @@ deploy/
     └── teardown-local.ps1          # Eliminación limpia del clúster (PowerShell)
 ```
 
-## Buenas prácticas de Kubernetes aplicadas
+## Configuración Kubernetes declarada
 
 | Práctica | Implementación |
 | --- | --- |
 | **Base de datos por microservicio** | StatefulSets y PVCs separados para `db-clinics`, `db-users`, `db-appointments` y `db-logs` (`postgres:18-alpine`, `PGDATA=/var/lib/postgresql/18/pgdata`). |
 | **Mínimo privilegio y Pod Security** | El namespace aplica Pod Security `baseline` (`warn: restricted`). Todos los pods usan `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: ["ALL"]`, `seccompProfile: RuntimeDefault`; los servicios y Redis usan `readOnlyRootFilesystem: true`. |
-| **Segmentación de red** | `network-policies.yaml` aplica `default-deny` en ingress dentro de `medicitas` y habilita únicamente el tráfico esperado entre gateway, microservicios, bases de datos, Redis y Keycloak. |
-| **Arranque determinista** | Los servicios usan `initContainers` (`wait-for-deps`) para esperar a PostgreSQL, Redis o Keycloak antes de arrancar; las bases copian los esquemas SQL mediante `copy-init-sql` desde `medicitas/assets`. |
-| **Salud y resiliencia** | Probes `startup`, `readiness` y `liveness` en cada carga (incluyendo el puerto de administración `9000` de Keycloak), `PodDisruptionBudget`, `HorizontalPodAutoscaler` y `topologySpreadConstraints`. |
+| **Segmentación de red** | `network-policies.yaml` declara ingress denegado por defecto con reglas permitidas. Su aplicación depende del plugin de red; los scripts no instalan ni verifican uno que imponga estas políticas. |
+| **Esperas de arranque** | Los servicios usan `initContainers` (`wait-for-deps`) para esperar a PostgreSQL, Redis o Keycloak antes de arrancar; las bases copian los esquemas SQL mediante `copy-init-sql` desde `medicitas/assets`. |
+| **Salud y resiliencia** | Probes de arranque/readiness/liveness en cargas persistentes, PDB, HPA y distribución de pods. `/health` de la aplicación solo comprueba liveness, no bases/identidad/caché. Los Jobs usan estado de finalización; HPA necesita API de métricas. |
 | **Cero duplicación de SQL/Realm** | `deploy/docker/assets.Dockerfile` empaqueta `database/` y `keycloak/` directo desde la raíz del repo sin duplicar scripts ni realms. |
 | **Iteraciones limpias** | `deploy-local.sh` y `deploy-local.ps1` eliminan cualquier clúster Kind previo llamado `medicitas` antes de crear uno nuevo para evitar conflictos de volúmenes, imágenes o puertos. |
 
@@ -78,15 +90,22 @@ Instale las siguientes herramientas y asegúrese de que Docker esté en ejecuci�
 - **Docker** (Docker Desktop en macOS/Windows, o Docker Engine/Desktop en Linux)
 - **Kind** (`kind` CLI v0.20+)
 - **kubectl** (con soporte integrado de `kubectl apply -k`)
-- **Node.js 20+** (requerido para `test-all-endpoints.mjs` y cálculo portable de fechas en `verify.sh`)
+- **Node.js >=22.18** (requerido para `test-all-endpoints.mjs` y cálculo portable de fechas en `verify.sh`)
 - **curl** (usado por `verify.sh`)
 
 > [!IMPORTANT]
-> Libere los puertos locales **`3000`** y **`8080`** antes de desplegar (por ejemplo, detenga `docker compose` si está activo con `docker compose down`). Kind expone estos puertos del host directamente hacia los NodePorts del clúster.
+> Libere los puertos locales **`3000`** y **`8080`** antes de desplegar (por ejemplo, detenga su propia pila Compose si está activa con `docker compose stop`). Kind expone estos puertos del host directamente hacia los NodePorts del clúster.
 
 ## Inicio rápido (macOS, Linux, Windows)
 
-Ejecute todos los comandos desde la **raíz del repositorio**.
+Ejecute desde la raíz contra un clúster descartable. Kubernetes usa
+`deploy/k8s/base/configmap-env.yaml` y `deploy/k8s/overlays/local/secrets.env`;
+copiar el `.env` raíz no lo configura. Los secretos versionados son ejemplos
+locales, no credenciales de producción. Revise sus valores juntos, en especial
+contraseña/URL de Redis y secreto administrativo de Keycloak.
+
+Los comandos predeterminados de abajo recrean el clúster. Use las opciones de
+conservación solo cuando quiera retener sus datos; no migran esquemas de base.
 
 ### macOS y Linux
 
@@ -141,9 +160,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 | **Edge Gateway (API)** | `http://localhost:3000` | Host `3000` → NodePort `30080` → `edge-gateway:3000` |
 | **Salud del Gateway** | `http://localhost:3000/health` | Igual que arriba |
 | **Keycloak** | `http://localhost:8080` | Host `8080` → NodePort `30880` → `keycloak:8080` |
-| **OIDC Discovery** | `http://localhost:8080/realms/medicitas/.well-known/openid-configuration` | Igual que arriba |
+| **OIDC Discovery** | `http://localhost:8080/realms/Sistema_Clinico/.well-known/openid-configuration` | Igual que arriba |
 
-Los nombres DNS internos permanecen aislados dentro del namespace `medicitas` (`clinics-service:3001`, `users-service:3002`, `appointments-service:3003`, `audit-service:3004`, `db-clinics:5432`, `db-users:5432`, `db-appointments:5432`, `db-logs:5432`, `redis:6379`, `keycloak:8080`).
+Los nombres DNS internos permanecen aislados dentro del namespace `medicitas` (`clinics-service:3000`, `users-service:3000`, `appointments-service:3000`, `audit-service:3000`, `db-clinics:5432`, `db-users:5432`, `db-appointments:5432`, `db-logs:5432`, `redis:6379`, `keycloak:8080`).
 
 ## Verificación
 
@@ -160,16 +179,31 @@ Valida:
 - RBAC y enrutamiento entre microservicios (`/audit/logs` `200`/`403`, `/services/:id`, `/professionals/:id` y `/availability`)
 - Claves `avail:*` en la caché de Redis
 
-### 2. Suite completa de pruebas E2E (24 suites)
+### 2. Recorrido de API (24 pasos)
 
 ```bash
 node deploy/scripts/test-all-endpoints.mjs
 ```
 
-Prueba todos los flujos de extremo a extremo contra `http://localhost:3000`: salud (externa y ClusterIP interna), catálogos públicos, tokens OIDC e incorporación de clínicas con Keycloak, CRUD de usuarios/profesionales/pacientes, horarios y bloqueos, caché de disponibilidad, reserva + conflictos/validación (`409`/`422`) + reprogramación/cancelación/resultado/notas, agendas/conteos y verificación de RBAC y outbox relay en `audit-service`.
+El script tiene 24 pasos por el gateway y usa `kubectl exec` para salud interna
+y caché; necesita contexto Kubernetes y namespace, además de una URL de API.
+Obtiene tokens semilla y ejercita altas de clínica, usuario y profesional,
+registro/actualización de pacientes, servicios, horarios, disponibilidad, reserva,
+conflicto/validación, reprogramación/cancelación, desenlace/notas, consultas y
+entrega de auditoría. Los catálogos requieren autenticación. No hay CRUD completo
+para toda entidad.
+
+Cambia la cita semilla 804 a atendida y crea una nota, así que no se puede repetir
+sobre los mismos datos sin preparación. Reserva/cancelación y desenlace usan
+citas distintas. No sustituye la carrera simultánea automatizada ni acredita
+todas las rutas/invariantes. Su existencia no registra una ejecución exitosa.
+Valores predeterminados: gateway 3000, Keycloak 8080, realm `Sistema_Clinico`,
+cliente `integration-tests`, namespace `medicitas`; la contraseña de pruebas se
+toma del entorno o del archivo de secretos del overlay.
 
 > [!NOTE]
-> `test-all-endpoints.mjs` crea usuarios, servicios, horarios y citas de prueba en el clúster. Ejecute `./deploy/scripts/deploy-local.sh` después si desea volver a un estado semilla limpio.
+> `test-all-endpoints.mjs` crea usuarios, servicios, horarios y citas. Recrear el
+> clúster descarta sus datos; no use el script para reiniciar un clúster compartido.
 
 ## Eliminación del clúster
 
@@ -186,12 +220,12 @@ Elimine el clúster local Kind y todos sus PVCs:
 
 ## Solución de problemas
 
-- **Puertos `3000` u `8080` ocupados**: Detenga procesos locales o `docker compose down` antes de ejecutar `deploy-local`.
+- **Puertos `3000` u `8080` ocupados**: Detenga sus propios procesos locales o use `docker compose stop` antes de ejecutar `deploy-local`.
 - **Inspección de logs y pods**:
   ```bash
   kubectl -n medicitas get pods
   kubectl -n medicitas logs deploy/edge-gateway
   kubectl -n medicitas logs job/keycloak-seed
   ```
-- **Fin de línea en Windows (errores `\r` en `.sh`)**: `deploy/.gitattributes` fuerza LF para `*.sh`. Si algún editor los convirtió a CRLF, restaure con `git checkout -- deploy/scripts/*.sh` o `dos2unix deploy/scripts/*.sh`.
+- **Fin de línea en Windows (errores `\r` en `.sh`)**: `deploy/.gitattributes` fuerza LF para `*.sh`. Si algún editor los convirtió a CRLF, convierta solo los scripts afectados con `dos2unix` después de revisar sus cambios; no descarte trabajo sin commit.
 - **Advertencias de `kind load` con imágenes multiplataforma**: `deploy-local` muestra avisos no fatales si Docker Desktop usa índices OCI para Postgres/Redis/Keycloak; Kind descarga esas imágenes base directamente si hace falta.

@@ -2,9 +2,21 @@
 
 # MediCitas Kubernetes Deployment
 
-Kubernetes infrastructure (Kustomize base + local Kind overlay) and cross-platform scripts to build, deploy, and verify the entire MediCitas platform locally on **macOS**, **Linux**, and **Windows**.
+Optional local Kubernetes deployment using Kustomize and Kind, with Bash and
+PowerShell scripts. Compose is the Stage 1 startup path. This review checked
+manifests and script syntax; no cluster was deployed.
+
+Deployment scripts delete the existing Kind cluster named `medicitas` by default,
+including its data. Use only a disposable local cluster. `--keep-cluster` (Bash)
+or `-KeepCluster` (PowerShell) reuses it and reapplies workloads; this is still a
+mutation, not a read-only check.
 
 ## Architecture
+
+The original diagram is retained. Its domain-service ports 3001-3004 and JWKS
+arrow to the gateway are outdated: all domain services use internal port 3000,
+and each domain service verifies tokens. Gateway prefixes have more specific
+exceptions for schedules, assignments and patient history; see the [API](../docs/api.md).
 
 ```mermaid
 flowchart LR
@@ -59,15 +71,15 @@ deploy/
     └── teardown-local.ps1          # Clean cluster deletion (PowerShell)
 ```
 
-## Kubernetes Best Practices Applied
+## Declared Kubernetes configuration
 
 | Practice | Implementation |
 | --- | --- |
 | **Database-per-service isolation** | Separate StatefulSets + PVCs for `db-clinics`, `db-users`, `db-appointments`, and `db-logs` (`postgres:18-alpine`, `PGDATA=/var/lib/postgresql/18/pgdata`). |
 | **Least privilege & Pod Security** | Namespace enforces Pod Security `baseline` (`warn: restricted`). All pods set `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: ["ALL"]`, `seccompProfile: RuntimeDefault`; app services and Redis set `readOnlyRootFilesystem: true`. |
-| **Network segmentation** | `network-policies.yaml` applies default-deny ingress in `medicitas` and permits only expected microservice → DB/Redis/Keycloak/Gateway traffic. |
-| **Deterministic startup** | App services use `wait-for-deps` `initContainers` to wait for their PostgreSQL instance, Redis, or Keycloak before starting; databases copy SQL schemas via `copy-init-sql` from `medicitas/assets`. |
-| **Health & resilience** | Startup, readiness, and liveness probes on every workload (including Keycloak management port `9000`), PodDisruptionBudgets, HorizontalPodAutoscalers, and `topologySpreadConstraints`. |
+| **Network segmentation** | `network-policies.yaml` declares default-deny ingress with allow rules. Enforcement depends on the network plugin; deployment scripts do not install or verify a policy-enforcing plugin. |
+| **Startup waits** | App services use `wait-for-deps` `initContainers` to wait for their PostgreSQL instance, Redis, or Keycloak before starting; databases copy SQL schemas via `copy-init-sql` from `medicitas/assets`. |
+| **Health & resilience** | Startup/readiness/liveness probes on long-running workloads, PDBs, HPAs and topology spread settings. App `/health` probes only check liveness, not DB/identity/cache readiness. Jobs use completion status; HPA needs a metrics API. |
 | **Zero duplication of SQL/Realm assets** | `deploy/docker/assets.Dockerfile` packages `database/` and `keycloak/` directly from repo root so manifests never duplicate schemas or realms. |
 | **Clean iteration lifecycle** | `deploy-local.sh` and `deploy-local.ps1` delete any previous `medicitas` Kind cluster before creating a fresh cluster so stale PVCs, images, or ports never cause conflicts. |
 
@@ -78,15 +90,22 @@ Install the following tools and ensure Docker is running:
 - **Docker** (Docker Desktop on macOS/Windows, or Docker Engine/Desktop on Linux)
 - **Kind** (`kind` CLI v0.20+)
 - **kubectl** (with built-in `kubectl kustomize` / `kubectl apply -k`)
-- **Node.js 20+** (only needed to run `test-all-endpoints.mjs` or macOS/cross-platform date parsing in `verify.sh`)
+- **Node.js >=22.18** (only needed to run `test-all-endpoints.mjs` or macOS/cross-platform date parsing in `verify.sh`)
 - **curl** (for `verify.sh`)
 
 > [!IMPORTANT]
-> Free host ports **`3000`** and **`8080`** before deploying (for example, stop `docker compose` if it is running: `docker compose down`). Kind binds these host ports directly to the cluster NodePorts.
+> Free host ports **`3000`** and **`8080`** before deploying (for example, stop your own Compose stack if it is running: `docker compose stop`). Kind binds these host ports directly to the cluster NodePorts.
 
 ## Quick Start (macOS, Linux, Windows)
 
-Run every command from the **repository root**.
+Run commands from the repository root against a disposable cluster. Kubernetes
+uses `deploy/k8s/base/configmap-env.yaml` and the local overlay
+`deploy/k8s/overlays/local/secrets.env`; copying the root `.env` does not configure
+it. The tracked secret values are local examples, not production credentials.
+Review them together, especially Redis password/URL and the Keycloak admin secret.
+
+The default commands below recreate the cluster. Use the keep-cluster flags only
+when retaining existing data is intended; they do not migrate database schemas.
 
 ### macOS & Linux
 
@@ -141,9 +160,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 | **Edge Gateway (API)** | `http://localhost:3000` | Host `3000` → NodePort `30080` → `edge-gateway:3000` |
 | **Gateway Health** | `http://localhost:3000/health` | Same as above |
 | **Keycloak** | `http://localhost:8080` | Host `8080` → NodePort `30880` → `keycloak:8080` |
-| **Keycloak OIDC Realm** | `http://localhost:8080/realms/medicitas/.well-known/openid-configuration` | Same as above |
+| **Keycloak OIDC Realm** | `http://localhost:8080/realms/Sistema_Clinico/.well-known/openid-configuration` | Same as above |
 
-Cluster-internal DNS names stay isolated inside the `medicitas` namespace (`clinics-service:3001`, `users-service:3002`, `appointments-service:3003`, `audit-service:3004`, `db-clinics:5432`, `db-users:5432`, `db-appointments:5432`, `db-logs:5432`, `redis:6379`, `keycloak:8080`).
+Cluster-internal DNS names stay isolated inside the `medicitas` namespace (`clinics-service:3000`, `users-service:3000`, `appointments-service:3000`, `audit-service:3000`, `db-clinics:5432`, `db-users:5432`, `db-appointments:5432`, `db-logs:5432`, `redis:6379`, `keycloak:8080`).
 
 ## Verification
 
@@ -160,16 +179,29 @@ Checks:
 - RBAC and routing across microservices (`/audit/logs` `200`/`403`, `/services/:id`, `/professionals/:id`, and `/availability`)
 - Redis `avail:*` availability cache keys
 
-### 2. Full End-to-End API Test Suite (24 Suites)
+### 2. API walkthrough (24 steps)
 
 ```bash
 node deploy/scripts/test-all-endpoints.mjs
 ```
 
-Exercises every microservice route through `http://localhost:3000`: health checks (external & internal ClusterIP), public clinics/specialties/services, Keycloak OIDC tokens & onboarding, user/professional/patient CRUD, working-hours & block management, availability caching, appointment booking + conflict/validation (`409`/`422`) + reschedule/cancel/outcome/notes, agendas & counts, and `audit-service` RBAC & outbox relay delivery.
+The script has 24 steps through the gateway and uses `kubectl exec` for internal
+health/cache checks; it requires the Kubernetes context and namespace, not just
+an API URL. It requests seeded Keycloak tokens and exercises onboarding, user and
+professional creation, patient registration/update, services, schedules, availability,
+booking/conflict/validation, reschedule/cancel, outcome/notes, queries and audit delivery.
+Catalog routes require authentication. There is no full CRUD API for every entity.
+
+It changes seed appointment 804 to attended and creates a note, so it is not
+repeatable on an unchanged dataset. Booking/cancellation and outcome use different
+appointments. It is not the automated simultaneous last-slot race or proof of all
+routes/invariants. Its presence is not a successful run record. Defaults: gateway
+3000, Keycloak 8080, realm `Sistema_Clinico`, client `integration-tests`, namespace
+`medicitas`; the test password comes from the environment or overlay secrets file.
 
 > [!NOTE]
-> `test-all-endpoints.mjs` mutates cluster state by creating test users, services, schedules, and appointments. Run `./deploy/scripts/deploy-local.sh` if you want a pristine seeded cluster afterwards.
+> `test-all-endpoints.mjs` creates users, services, schedules and appointments.
+> Recreating the cluster discards its data; do not use the deploy script to reset a shared cluster.
 
 ## Teardown
 
@@ -186,12 +218,12 @@ Delete the local Kind cluster and all its PVCs cleanly:
 
 ## Troubleshooting
 
-- **Ports `3000` or `8080` already in use**: Stop local Node/Compose processes (`docker compose down`) before running `deploy-local`.
+- **Ports `3000` or `8080` already in use**: Stop your own local Node/Compose processes (`docker compose stop`) before running `deploy-local`.
 - **Inspecting logs or pod status**:
   ```bash
   kubectl -n medicitas get pods
   kubectl -n medicitas logs deploy/edge-gateway
   kubectl -n medicitas logs job/keycloak-seed
   ```
-- **Line endings on Windows (`\r` errors in `.sh`)**: `deploy/.gitattributes` forces LF on `*.sh`. If an editor converted them to CRLF, restore with `git checkout -- deploy/scripts/*.sh` or `dos2unix deploy/scripts/*.sh`.
+- **Line endings on Windows (`\r` errors in `.sh`)**: `deploy/.gitattributes` forces LF on `*.sh`. If an editor converted them to CRLF, convert only the affected local scripts with `dos2unix` after reviewing their changes; do not discard uncommitted work.
 - **Multi-platform image `kind load` warnings**: `deploy-local` prints non-fatal warnings if Docker Desktop uses an OCI image index for Postgres/Redis/Keycloak; Kind pulls those base images directly if needed.
