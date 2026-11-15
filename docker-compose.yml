@@ -146,10 +146,13 @@ services:
     container_name: Redis_MediCitas
     ports:
       - "${REDIS_PORT}:${REDIS_PORT}"
+    # The official image ignores REDIS_ARGS (only redis-stack reads it): without this
+    # command Redis ran with no password, REDIS_URL's AUTH failed and the availability
+    # cache silently fell back to PostgreSQL.
+    command: ["redis-server", "--port", "${REDIS_PORT}", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
     environment:
       REDIS_PORT: ${REDIS_PORT}
       REDISCLI_AUTH: ${REDIS_PASSWORD}
-      REDIS_ARGS: "--requirepass ${REDIS_PASSWORD} --appendonly yes"
     volumes:
       - redisdata:/data
     healthcheck:
