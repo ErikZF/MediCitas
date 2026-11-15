@@ -161,3 +161,34 @@ Las guías mantenidas tienen versiones en inglés y español enlazadas al inicio
 Actualice ambas juntas. La [captura histórica de planes](docs/indexes-plans.md)
 se conserva en su idioma original. La guía de despliegue cubre un entorno local
 opcional; Compose sigue siendo el arranque de la Etapa 1.
+
+## Declaración de uso de IA
+
+Usamos inteligencia artificial para implementar buena parte del código de
+MediCitas y para crear pruebas. La entrega combina código escrito por nosotros
+con código generado con IA a partir de nuestras indicaciones.
+
+Planeamos el proyecto y trabajamos su diseño entre los tres integrantes del
+equipo, tomando como punto de partida la consulta que hicimos al profesor. A partir
+de esa conversación decidimos trabajar con una arquitectura de microservicios e
+investigamos cómo implementarla. Con esa base, fuimos definiendo las tecnologías
+que usaríamos, cómo abordar cada problema y qué buenas prácticas seguir. Esas
+decisiones orientaban las solicitudes a la IA: le indicábamos qué debía implementar,
+con qué tecnologías y bajo qué condiciones.
+
+También recurrimos a la IA para agilizar la escritura de pruebas, dado el volumen
+de trabajo que requerían. Nosotros especificábamos los tipos de pruebas, los
+casos que queríamos cubrir, el comportamiento esperado y las herramientas con
+las que debían implementarse. Con esas indicaciones, la IA nos ayudaba a producir
+el código de las pruebas.
+En la documentación también usamos IA para afinar la redacción, ordenar las
+explicaciones y darles un formato más claro y presentable. Nos ayudó a pulir los
+textos y mantener un estilo uniforme entre las guías, para que el trabajo fuera
+más fácil de leer y consultar. Además, usamos IA para las traducciones de la
+documentación entre español e inglés.
+
+Revisábamos el código generado para comprobar que tuviera sentido, respetara el
+diseño acordado y resolviera el problema planteado. Consideramos que la IA puede
+acelerar buena parte de la implementación cuando el equipo tiene claro qué quiere
+construir y guía ese trabajo. La responsabilidad por las decisiones, la revisión
+y el contenido final de esta entrega sigue siendo nuestra.
