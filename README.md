@@ -131,6 +131,7 @@ results and which test covers each requirement and invariant: [test report](docs
 | API contract | [docs/api.md](docs/api.md) | [docs/api.es.md](docs/api.es.md) |
 | Postman demo | [postman/README.md](postman/README.md) | [postman/README.es.md](postman/README.es.md) |
 | Databases and RLS | [docs/database.md](docs/database.md) | [docs/database.es.md](docs/database.es.md) |
+| Data model: dictionary and 3NF | [docs/data-model.md](docs/data-model.md) | [docs/data-model.es.md](docs/data-model.es.md) |
 | Multi-tenancy architecture | [docs/multitenancy.md](docs/multitenancy.md) | [docs/multitenancy.es.md](docs/multitenancy.es.md) |
 | Multi-tenancy comparison | [docs/database-comparison.md](docs/database-comparison.md) | [docs/database-comparison.es.md](docs/database-comparison.es.md) |
 | Identity with Keycloak | [docs/keycloak.md](docs/keycloak.md) | [docs/keycloak.es.md](docs/keycloak.es.md) |
