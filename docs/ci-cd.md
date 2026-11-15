@@ -24,11 +24,13 @@ flowchart TD
             PG["postgres:18-alpine\n(healthcheck enabled)"]
         end
         
-        IntegTest["Job: DB Integration & Concurrency\n(TEST_DATABASE_URL)\n- RLS policy checks\n- Appointment lifecycle and availability\n- Concurrency and critical races (I1, I2, I5)"]
+        IntegTest["Job: DB Integration & Concurrency\n(npm run test:all -- --external --no-e2e)\n- every workspace suite\n- RLS, lifecycle, cache, audit\n- races (I1, I2, I3)"]
+        E2E["Job: End-to-end against Docker Compose\n(cp .env.example .env; npm run test:e2e)"]
         DockerBuild["Job: Docker Build Validation\nMatrix: 5 microservices\n(edge-gateway, clinics, users, appointments, audit)"]
 
         Quality --> UnitTest
         UnitTest --> IntegTest
+        Quality --> E2E
         IntegTest --> DockerBuild
     end
 
@@ -65,15 +67,16 @@ flowchart TD
    - Injects `TEST_DATABASE_URL: postgres://test:test_password@localhost:5432/postgres`.
    - Loads the four schemas and the demo seed into their own databases, as `docker compose up` does, so a seed that breaks a constraint fails here.
    - Also starts **Redis 7** (`redis:7-alpine`) and injects `TEST_REDIS_URL: redis://localhost:6379` for the availability cache tests (E8, I8). Without that variable those tests are skipped.
-   - The tests create a throwaway database on the fly (`medicitas_<label>_<pid>`) and apply the real schema [`database/appointments/init.sql`](../database/appointments/init.sql), with its extensions (`btree_gist`), exclusion constraints and RLS policies.
-   - It checks:
-     - Multi-tenant transactions (`withTenantTx`) with the least-privilege role `medicitas_app`.
-     - Row-level security (RLS) policies.
-     - Scheduling and the appointment lifecycle (RF5, RF6, RF7, RF8, RF9, RF10-RF13, RF21).
-     - Race conditions and concurrency (I1, I2, I5: booking the last slot at the same time).
-   - Drops the temporary database at the end.
+   - Runs `npm run test:all -- --external --no-e2e`: the same command as locally, with these service containers instead of `docker-compose.test.yml`. It builds everything and runs the suites of all eight workspaces (unit, integration and race), not only appointments.
+   - Each suite creates throwaway databases on the fly and applies the real `init.sql` of its database, with its extensions (`btree_gist`), exclusion constraints, triggers, roles and RLS policies, and drops them at the end.
+   - What each test covers: [test-report.md](test-report.md).
 
-4. **`docker-build` (Docker image validation)**:
+4. **`e2e-compose` (end-to-end against Docker Compose)**:
+   - Does what the evaluator does on a fresh clone: `cp .env.example .env`, then `npm run test:e2e`.
+   - The command runs `docker compose up -d --build`, waits until the gateway answers and Keycloak has the demo users, and runs the 25 steps of [`deploy/scripts/test-all-endpoints.mjs`](../deploy/scripts/test-all-endpoints.mjs) through the gateway with real Keycloak tokens.
+   - If it fails, the job prints `docker compose ps -a` and the last lines of every container's log.
+
+5. **`docker-build` (Docker image validation)**:
    - Uses a matrix to build the images of the 5 microservices in parallel with [`services/Dockerfile`](../services/Dockerfile):
      - `edge-gateway`
      - `clinics-service`
@@ -84,27 +87,26 @@ flowchart TD
 
 ---
 
-## 3. Running the integration tests locally
+## 3. Running the tests locally
 
-To reproduce locally the same integration tests that GitHub Actions runs:
+One command, the same one CI uses (it only needs Docker and Node.js):
 
-1. Start the appointments database with Docker Compose:
-   ```bash
-   docker compose up -d db_appointments
-   ```
+```bash
+npm run test:all
+```
 
-2. Run the tests with `TEST_DATABASE_URL` (using the credentials from your `.env`):
-   ```bash
-   # Integration tests of the DB library (RLS and transactions)
-   TEST_DATABASE_URL=postgres://tu_user:tu_password_seguro@localhost:5433/appointments_db npm run test:integration -w packages/db
+It starts a throwaway PostgreSQL 18 and Redis (`docker-compose.test.yml`, ports 55432 and
+56379), runs every workspace suite against them, removes them, and then runs the
+end-to-end suite against the Compose stack. Options and results:
+[test-report.md](test-report.md#how-to-run-them).
 
-   # Integration and concurrency tests of appointments-service
-   TEST_DATABASE_URL=postgres://tu_user:tu_password_seguro@localhost:5433/appointments_db npm test -w services/appointments-service
-   ```
+To run one suite against your own database and Redis instead, give it the two URLs; the
+user must be able to create databases:
 
-3. To include the availability cache tests (E8), start Redis and add `TEST_REDIS_URL`:
-   ```bash
-   docker compose up -d redis
+```bash
+TEST_DATABASE_URL=postgres://test:test_password@127.0.0.1:55432/postgres \
+TEST_REDIS_URL=redis://127.0.0.1:56379 \
+npm test -w services/appointments-service
+```
 
-   TEST_DATABASE_URL=postgres://tu_user:tu_password_seguro@localhost:5433/appointments_db TEST_REDIS_URL=redis://:tu_password_seguro@localhost:6379 npm test -w services/appointments-service
-   ```
+(`npm run test:all -- --no-e2e --keep` leaves exactly those two containers running.)

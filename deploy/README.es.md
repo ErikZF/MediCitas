@@ -171,6 +171,9 @@ Prueba todos los flujos de extremo a extremo contra `http://localhost:3000`: sal
 > [!NOTE]
 > `test-all-endpoints.mjs` crea usuarios, servicios, horarios y citas de prueba en el clúster. Ejecute `./deploy/scripts/deploy-local.sh` después si desea volver a un estado semilla limpio.
 
+El mismo script corre contra Docker Compose con `E2E_RUNTIME=compose` (usa entonces
+`docker compose exec` en vez de `kubectl exec`); `npm run test:e2e` lo hace por usted.
+
 ## Eliminación del clúster
 
 Elimine el clúster local Kind y todos sus PVCs:

@@ -171,6 +171,9 @@ Exercises every microservice route through `http://localhost:3000`: health check
 > [!NOTE]
 > `test-all-endpoints.mjs` mutates cluster state by creating test users, services, schedules, and appointments. Run `./deploy/scripts/deploy-local.sh` if you want a pristine seeded cluster afterwards.
 
+The same script runs against Docker Compose with `E2E_RUNTIME=compose` (it then uses
+`docker compose exec` instead of `kubectl exec`); `npm run test:e2e` does that for you.
+
 ## Teardown
 
 Delete the local Kind cluster and all its PVCs cleanly:

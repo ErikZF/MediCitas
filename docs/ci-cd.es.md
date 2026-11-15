@@ -24,11 +24,13 @@ flowchart TD
             PG["postgres:18-alpine\n(healthcheck activo)"]
         end
         
-        IntegTest["Job: DB Integration & Concurrency\n(TEST_DATABASE_URL)\n- Verificación de políticas RLS\n- Ciclo de vida y disponibilidad de citas\n- Concurrencia y carreras críticas (I1, I2, I5)"]
+        IntegTest["Job: DB Integration & Concurrency\n(npm run test:all -- --external --no-e2e)\n- todas las suites de los workspaces\n- RLS, ciclo de vida, caché, bitácora\n- carreras (I1, I2, I3)"]
+        E2E["Job: End-to-end contra Docker Compose\n(cp .env.example .env; npm run test:e2e)"]
         DockerBuild["Job: Docker Build Validation\nMatriz: 5 microservicios\n(edge-gateway, clinics, users, appointments, audit)"]
 
         Quality --> UnitTest
         UnitTest --> IntegTest
+        Quality --> E2E
         IntegTest --> DockerBuild
     end
 
@@ -65,15 +67,16 @@ El archivo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) se ejecuta 
    - Inyecta `TEST_DATABASE_URL: postgres://test:test_password@localhost:5432/postgres`.
    - Carga los cuatro esquemas y la semilla de demo en sus propias bases, igual que `docker compose up`, para que una semilla que rompe una restricción falle aquí.
    - Levanta también **Redis 7** (`redis:7-alpine`) e inyecta `TEST_REDIS_URL: redis://localhost:6379` para las pruebas de la caché de disponibilidad (E8, I8). Sin esa variable, esas pruebas se saltan.
-   - Los tests crean dinámicamente una base de datos desechable (`medicitas_<label>_<pid>`), aplican el esquema real [`database/appointments/init.sql`](../database/appointments/init.sql) con extensiones (`btree_gist`), restricciones de exclusión y políticas RLS.
-   - Valida:
-     - Transacciones multi-inquilino (`withTenantTx`) con el rol de menor privilegio `medicitas_app`.
-     - Políticas de seguridad a nivel de fila (RLS).
-     - Agendamiento y ciclo de vida de citas (RF5, RF6, RF7, RF8, RF9, RF10-RF13, RF21).
-     - Condiciones de carrera y concurrencia (I1, I2, I5: reserva del último cupo simultáneo).
-   - Destruye la base de datos temporal al finalizar.
+   - Corre `npm run test:all -- --external --no-e2e`: el mismo comando que en local, con estos contenedores de servicio en vez de `docker-compose.test.yml`. Compila todo y corre las suites de los ocho workspaces (unitarias, de integración y de carrera), no solo las de appointments.
+   - Cada suite crea bases desechables al vuelo, les aplica el `init.sql` real de su base, con sus extensiones (`btree_gist`), restricciones de exclusión, triggers, roles y políticas RLS, y las borra al final.
+   - Qué cubre cada prueba: [test-report.es.md](test-report.es.md).
 
-4. **`docker-build` (Validación de imágenes de Docker)**:
+4. **`e2e-compose` (punta a punta contra Docker Compose)**:
+   - Hace lo que haría el evaluador con un clon nuevo: `cp .env.example .env` y luego `npm run test:e2e`.
+   - El comando corre `docker compose up -d --build`, espera a que el gateway responda y Keycloak tenga los usuarios de demo, y corre los 25 pasos de [`deploy/scripts/test-all-endpoints.mjs`](../deploy/scripts/test-all-endpoints.mjs) a través del gateway con tokens reales de Keycloak.
+   - Si falla, el job imprime `docker compose ps -a` y las últimas líneas del log de cada contenedor.
+
+5. **`docker-build` (Validación de imágenes de Docker)**:
    - Utiliza una matriz para construir en paralelo las imágenes de los 5 microservicios usando [`services/Dockerfile`](../services/Dockerfile):
      - `edge-gateway`
      - `clinics-service`
@@ -84,28 +87,26 @@ El archivo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) se ejecuta 
 
 ---
 
-## 3. Ejecución de Pruebas de Integración Localmente
+## 3. Correr las pruebas en local
 
-Para reproducir localmente las mismas pruebas de integración que ejecuta GitHub Actions:
+Un solo comando, el mismo que usa CI (solo necesita Docker y Node.js):
 
-1. Iniciar la base de datos de appointments con Docker Compose:
-   ```bash
-   docker compose up -d db_appointments
-   ```
+```bash
+npm run test:all
+```
 
-2. Ejecutar los tests pasando `TEST_DATABASE_URL` (usando las credenciales de tu `.env`):
-   ```bash
-   # Pruebas de integración de la librería de DB (RLS y transacciones)
-   TEST_DATABASE_URL=postgres://tu_user:tu_password_seguro@localhost:5433/appointments_db npm run test:integration -w packages/db
+Levanta un PostgreSQL 18 y un Redis desechables (`docker-compose.test.yml`, puertos
+55432 y 56379), corre contra ellos las suites de todos los workspaces, los borra, y
+después corre la suite de punta a punta contra la pila de Compose. Opciones y
+resultados: [test-report.es.md](test-report.es.md#cómo-se-corren).
 
-   # Pruebas de integración y concurrencia de appointments-service
-   TEST_DATABASE_URL=postgres://tu_user:tu_password_seguro@localhost:5433/appointments_db npm test -w services/appointments-service
-   ```
+Para correr una sola suite contra su propia base y su propio Redis, pásele las dos URL;
+el usuario debe poder crear bases:
 
-3. Para incluir las pruebas de la caché de disponibilidad (E8), levantar Redis y agregar `TEST_REDIS_URL`:
-   ```bash
-   docker compose up -d redis
+```bash
+TEST_DATABASE_URL=postgres://test:test_password@127.0.0.1:55432/postgres \
+TEST_REDIS_URL=redis://127.0.0.1:56379 \
+npm test -w services/appointments-service
+```
 
-   TEST_DATABASE_URL=postgres://tu_user:tu_password_seguro@localhost:5433/appointments_db TEST_REDIS_URL=redis://:tu_password_seguro@localhost:6379 npm test -w services/appointments-service
-   ```
-
+(`npm run test:all -- --no-e2e --keep` deja corriendo justo esos dos contenedores.)
