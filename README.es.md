@@ -35,7 +35,8 @@ Es un workspace de npm: un solo `npm install` en la raíz instala todo.
 npm install
 npm run build        # paquetes compartidos y luego servicios
 npm run typecheck
-npm test
+npm test             # pruebas unitarias; las de integración se saltan sin base de datos
+npm run test:all     # todas las pruebas, con sus propias bases (requiere Docker)
 npm run dev -w services/edge-gateway
 ```
 
@@ -112,6 +113,20 @@ bases, identidad ni caché. Las llamadas de dominio necesitan tokens vigentes de
 Keycloak con clínica y rol correctos; vea el [contrato de la API](docs/api.es.md).
 Detenga la pila con `docker compose stop` (con las mismas opciones `-f` si las usó).
 
+## Pruebas
+
+```bash
+npm run test:all
+```
+
+Un solo comando corre todas las pruebas: levanta un PostgreSQL 18 y un Redis
+desechables, corre las pruebas unitarias, de integración y de carrera de cada
+workspace, y después la suite de punta a punta a través del gateway de la pila de
+Compose (antes corre `docker compose up -d --build`, así que copie primero
+`.env.example` a `.env`). Solo
+requiere Docker y Node.js. Opciones, resultados y qué prueba cubre cada requisito e
+invariante: [informe de pruebas](docs/test-report.es.md).
+
 ## Documentación
 
 | Tema | Español | English |
@@ -126,6 +141,7 @@ Detenga la pila con `docker compose stop` (con las mismas opciones `-f` si las u
 | Concurrencia: el último espacio | [docs/concurrency.es.md](docs/concurrency.es.md) | [docs/concurrency.md](docs/concurrency.md) |
 | Caché de disponibilidad | [docs/cache.es.md](docs/cache.es.md) | [docs/cache.md](docs/cache.md) |
 | Índices y sus planes | [docs/indexes.es.md](docs/indexes.es.md) | [docs/indexes.md](docs/indexes.md) |
+| Informe de pruebas | [docs/test-report.es.md](docs/test-report.es.md) | [docs/test-report.md](docs/test-report.md) |
 | CI/CD | [docs/ci-cd.es.md](docs/ci-cd.es.md) | [docs/ci-cd.md](docs/ci-cd.md) |
 | Despliegue en Kubernetes | [deploy/README.es.md](deploy/README.es.md) | [deploy/README.md](deploy/README.md) |
 | Capa de datos `@medicitas/db` | [packages/db/README.es.md](packages/db/README.es.md) | [packages/db/README.md](packages/db/README.md) |

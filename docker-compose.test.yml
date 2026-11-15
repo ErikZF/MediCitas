@@ -1,0 +1,32 @@
+# Throwaway PostgreSQL and Redis for the integration and race tests.
+# `npm run test:all` starts them, runs the tests and removes them; it never touches
+# the databases of the demo stack (docker-compose.yml). Data lives in memory only.
+name: medicitas-test
+
+services:
+  test-postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: postgres
+    ports:
+      - "${TEST_POSTGRES_PORT:-55432}:5432"
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  test-redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${TEST_REDIS_PORT:-56379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

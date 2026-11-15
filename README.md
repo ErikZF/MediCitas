@@ -35,7 +35,8 @@ It is an npm workspace: a single `npm install` at the root installs everything.
 npm install
 npm run build        # shared packages, then services
 npm run typecheck
-npm test
+npm test             # unit tests; integration tests skip without a database
+npm run test:all     # every test, with its own databases (needs Docker)
 npm run dev -w services/edge-gateway
 ```
 
@@ -111,6 +112,18 @@ identity or cache readiness test. Authenticated domain calls need fresh Keycloak
 tokens with matching clinic/role claims; see the [API contract](docs/api.md).
 Stop the stack with `docker compose stop` (with the same `-f` options if used).
 
+## Tests
+
+```bash
+npm run test:all
+```
+
+One command runs every test: it starts a throwaway PostgreSQL 18 and Redis, runs the
+unit, integration and race tests of every workspace, and then the end-to-end suite
+through the gateway of the Compose stack (it runs `docker compose up -d --build` first,
+so copy `.env.example` to `.env` before). It needs Docker and Node.js, nothing else. Options,
+results and which test covers each requirement and invariant: [test report](docs/test-report.md).
+
 ## Documentation
 
 | Topic | English | Español |
@@ -125,6 +138,7 @@ Stop the stack with `docker compose stop` (with the same `-f` options if used).
 | Concurrency: the last slot | [docs/concurrency.md](docs/concurrency.md) | [docs/concurrency.es.md](docs/concurrency.es.md) |
 | Availability cache | [docs/cache.md](docs/cache.md) | [docs/cache.es.md](docs/cache.es.md) |
 | Indexes and their plans | [docs/indexes.md](docs/indexes.md) | [docs/indexes.es.md](docs/indexes.es.md) |
+| Test report | [docs/test-report.md](docs/test-report.md) | [docs/test-report.es.md](docs/test-report.es.md) |
 | CI/CD | [docs/ci-cd.md](docs/ci-cd.md) | [docs/ci-cd.es.md](docs/ci-cd.es.md) |
 | Kubernetes deployment | [deploy/README.md](deploy/README.md) | [deploy/README.es.md](deploy/README.es.md) |
 | Data layer `@medicitas/db` | [packages/db/README.md](packages/db/README.md) | [packages/db/README.es.md](packages/db/README.es.md) |
