@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: medicitas
+resources:
+  - ../../base
+secretGenerator:
+  - name: medicitas-secrets
+    envs:
+      - secrets.env
+generatorOptions:
+  disableNameSuffixHash: true
+patches:
+  - path: patch-services-nodeport.yaml
+  - path: patch-resources-local.yaml
