@@ -22,6 +22,8 @@ packages/                librerías compartidas que los servicios importan por n
 database/                esquema de cada base
 keycloak/                realm versionado
 docs/                    documentación
+postman/                 colección de demo y plantilla segura de entorno
+requests/                recorrido REST Client y ejemplo de entorno local
 ```
 
 Es un workspace de npm: un solo `npm install` en la raíz instala todo.
@@ -80,12 +82,16 @@ Para usar Postman desde el host, cree localmente `.env.compose-demo.yaml`, ignor
 services:
   clinics-service:
     ports: ["127.0.0.1:3001:3000"]
+    networks: [private_net, public_net]
   users-service:
     ports: ["127.0.0.1:3002:3000"]
+    networks: [private_net, public_net]
   appointments-service:
     ports: ["127.0.0.1:3003:3000"]
+    networks: [private_net, public_net]
   audit-service:
     ports: ["127.0.0.1:3004:3000"]
+    networks: [private_net, public_net]
 ```
 
 ```bash
@@ -95,9 +101,11 @@ docker compose -f docker-compose.yml -f .env.compose-demo.yaml up -d --build
 Estos mapeos suponen `API_INTERNAL_PORT=3000` y puertos del host libres. Use las
 mismas opciones `-f` con los comandos posteriores de Compose. Las URL directas son
 `http://localhost:3001` a `http://localhost:3004`, respectivamente; las URL internas
-no cambian. `/health` indica que el servidor responde; no comprueba bases, identidad
-ni caché. Las llamadas de dominio necesitan tokens vigentes de Keycloak con clínica
-y rol correctos; vea el [contrato de la API](docs/api.es.md).
+no cambian. El override conserva `private_net` para tráfico entre servicios y añade
+`public_net` porque `private_net` es interna; publicar puertos por sí solo no basta
+para acceder desde el host. `/health` indica que el servidor responde; no comprueba
+bases, identidad ni caché. Las llamadas de dominio necesitan tokens vigentes de
+Keycloak con clínica y rol correctos; vea el [contrato de la API](docs/api.es.md).
 Detenga la pila con `docker compose stop` (con las mismas opciones `-f` si las usó).
 
 ## Documentación

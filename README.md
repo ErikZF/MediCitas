@@ -22,6 +22,8 @@ packages/                shared libraries the services import by name,
 database/                schema of each database
 keycloak/                versioned realm
 docs/                    documentation
+postman/                 demo collection and safe environment template
+requests/                REST Client walkthrough and local environment example
 ```
 
 It is an npm workspace: a single `npm install` at the root installs everything.
@@ -79,12 +81,16 @@ For Postman on the host, create an ignored `.env.compose-demo.yaml` locally:
 services:
   clinics-service:
     ports: ["127.0.0.1:3001:3000"]
+    networks: [private_net, public_net]
   users-service:
     ports: ["127.0.0.1:3002:3000"]
+    networks: [private_net, public_net]
   appointments-service:
     ports: ["127.0.0.1:3003:3000"]
+    networks: [private_net, public_net]
   audit-service:
     ports: ["127.0.0.1:3004:3000"]
+    networks: [private_net, public_net]
 ```
 
 ```bash
@@ -94,7 +100,9 @@ docker compose -f docker-compose.yml -f .env.compose-demo.yaml up -d --build
 These mappings assume `API_INTERNAL_PORT=3000` and free host ports. Use the same
 `-f` options with subsequent Compose commands. Direct host URLs are then
 `http://localhost:3001` through `http://localhost:3004`, respectively; internal
-service URLs stay unchanged. `/health` is a liveness response, not a database,
+service URLs stay unchanged. The override keeps `private_net` for service-to-service
+traffic and adds `public_net` because `private_net` is internal; port mappings alone
+are insufficient for host access. `/health` is a liveness response, not a database,
 identity or cache readiness test. Authenticated domain calls need fresh Keycloak
 tokens with matching clinic/role claims; see the [API contract](docs/api.md).
 Stop the stack with `docker compose stop` (with the same `-f` options if used).
