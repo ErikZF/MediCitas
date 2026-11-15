@@ -1,4 +1,4 @@
-# Índices justificados con su plan (tarjeta E10)
+# Índices justificados con su plan
 
 [English](indexes.md) · **Español**
 
@@ -11,7 +11,7 @@ la tarjeta E10. La salida completa de `EXPLAIN (ANALYZE, BUFFERS)` está en
 ## Cómo se midió
 
 ```bash
-TEST_DATABASE_URL=postgres://<usuario>:<contraseña>@localhost:5433/appointments_db \
+TEST_DATABASE_URL='postgres://<usuario>:<contraseña>@localhost:5433/postgres' \
 npm run explain:indexes -w services/appointments-service
 ```
 
@@ -27,9 +27,10 @@ crea dos bases desechables con los `init.sql` reales y carga:
 Después corre cada consulta **como `medicitas_app` y con el contexto de la clínica cargado**,
 así que las políticas RLS forman parte del plan, igual que en producción. Cada consulta corre
 dos veces: con los índices y el texto de consulta de antes de la E10, y con los actuales. Los
-tiempos son la mediana de 5 corridas en un contenedor de 2 vCPU con PostgreSQL 16 (producción
-usa la 18; los planes son del mismo tipo). Los buffers son páginas de 8 KB leídas de memoria o
-de disco: muestran el trabajo, y el tiempo muestra su costo en esta máquina.
+tiempos son medianas de 5 corridas registradas previamente en un contenedor de
+2 vCPU con PostgreSQL 16. Compose usa 18. Los buffers son páginas de
+8 KB de memoria o disco. Use un login administrativo en una instancia PostgreSQL
+18 descartable: el script crea y borra bases. El comando usa sintaxis Bash.
 
 ## Resultados
 
@@ -56,7 +57,7 @@ en ellas el cambio quita índices sin perder nada.
 
 ## Lo que mostraron los planes
 
-**1. Con RLS, los operadores de rangos nunca son condiciones de índice.** El índice obvio para
+**1. Los planes RLS registrados no usaron el solape de rangos como condición de índice.** El índice obvio para
 "las citas que se cruzan con un día" es un GiST sobre `tstzrange(starts_at, ends_at)`, y las
 restricciones `EXCLUDE` ya tienen uno. Pero los planes lo usaban solo para `clinic_id` y
 `professional_id`, y filtraban el rango fila por fila. La razón: con RLS activo, PostgreSQL
@@ -69,7 +70,8 @@ Por eso los índices nuevos son btrees sobre columnas simples, comparadas con `<
 `starts_at < to AND ends_at > from`, y un índice sobre `starts_at` solo puede usar la primera
 mitad: recorre desde el principio de los tiempos hasta `to`. La solución sale del dominio: una
 cita debe caber en un bloque de horario (I3), y los horarios nunca cruzan la medianoche, así
-que **ninguna cita dura más de un día**. El esquema ahora lo dice
+que **ninguna cita dura más de 1440 minutos**. Los días locales pueden variar
+con el horario de verano; la optimización depende del límite explícito de duración. El esquema lo dice
 (`CHECK appointment_within_one_day (duration_minutes <= 1440)`), y las consultas agregan la
 condición redundante `starts_at > from - 1 día`
 ([`domain/appointment-bounds.ts`](../services/appointments-service/domain/appointment-bounds.ts)).
@@ -81,9 +83,9 @@ igualdad (profesional, paciente, usuario) y luego por un rango o un orden (`star
 `occurred_at`). Los índices tienen exactamente ese orden. Primero las igualdades y el rango al
 final: después de la columna del rango, las columnas siguientes ya no achican el recorrido.
 
-**4. Las llaves primarias ya empiezan con `clinic_id`.** Desde las llaves listas para sharding,
-toda llave primaria es `(clinic_id, id)`. Un índice aparte solo sobre `clinic_id` duplica la
-primera columna de la llave primaria: se quitó en todas las tablas.
+**4. Las llaves por tenant de estas dos bases empiezan con `clinic_id`.**
+Un índice separado en esa columna duplica el prefijo de la llave. E10 quitó esos
+duplicados de las tablas listadas abajo; clinics/users conservan algunos.
 
 **5. `status` solo no es selectivo.** `idx_appointment_status` tenía cinco valores posibles para
 cientos de miles de filas, y ninguna consulta filtra solo por estado. RF7 filtra por estado
@@ -112,7 +114,7 @@ después de que el índice ya redujo todo a unas pocas filas.
 | `no_overlap_working_hours` (GiST, `EXCLUDE`) | Turnos solapados, y la lectura de la semana de un profesional en RF7 |
 | `professional_service_pkey (clinic_id, professional_id, service_id)` | "¿Este profesional lo ofrece?" y "¿quién lo ofrece?" de RF8 |
 | `UNIQUE (clinic_id, appointment_id)` en `clinical_note` | Una nota por cita, y la búsqueda de RF15 |
-| `idx_outbox_pending (created_at) WHERE published_at IS NULL` | El relay (I4) leyendo los eventos pendientes en orden; parcial, así que solo guarda lo pendiente |
+| `idx_outbox_pending (created_at) WHERE published_at IS NULL` | Relays de agenda y auditoría leyendo eventos pendientes en orden; parcial, así que solo guarda lo pendiente |
 
 **Quitados**
 
@@ -129,8 +131,7 @@ después de que el índice ya redujo todo a unas pocas filas.
 
 **Todavía sin consulta en la Etapa 1** (se conservan; sus dueños deberían justificarlos o
 quitarlos): `idx_appointment_clinic_updated_at`, `idx_appointment_clinic_status_changed_at`
-(se agregaron con las marcas de tiempo del ciclo de vida, probablemente para exportaciones
-incrementales de la Etapa 2) e `idx_idempotency_keys_expires_at` (para un trabajo de limpieza
+(se agregaron con las marcas del ciclo de vida; ninguna consulta actual los justifica) e `idx_idempotency_keys_expires_at` (para un trabajo de limpieza
 que todavía no existe). Antes de la E10, el planificador incluso usaba
 `idx_appointment_clinic_status_changed_at` para RF20 y RF21, solo porque empieza con
 `clinic_id`: ese era el recorrido de 7 722 páginas.
@@ -150,8 +151,9 @@ que todavía no existe). Antes de la E10, el planificador incluso usaba
 
 ## Aplicarlo a una base existente
 
-Las bases nuevas lo reciben todo de `init.sql`. Para un volumen creado antes de la E10, corra
-como dueño del esquema (los dos scripts se pueden repetir):
+Las bases nuevas reciben estos índices de `init.sql`. Para un volumen anterior a
+E10, revise los scripts y respalde los datos antes de ejecutarlos como dueño del
+esquema (ambos se pueden repetir):
 
 ```bash
 psql "$APPOINTMENTS_DB_URL" -f database/updates/appointments/upgrade-e10-indexes.sql

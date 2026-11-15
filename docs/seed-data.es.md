@@ -17,12 +17,10 @@ los nombres, ids y correos son inventados.
 | Bitácora | [`database/logs/seed.sql`](../database/logs/seed.sql) | `db_logs` con el volumen vacío |
 | Usuarios de Keycloak | [`keycloak/seed-users.json`](../keycloak/seed-users.json) | el job `keycloak-seed` |
 
-PostgreSQL ejecuta los SQL solo cuando el volumen está vacío. Para cargar una versión nueva:
-
-```bash
-docker compose down -v
-docker compose up -d --build
-```
+PostgreSQL ejecuta los SQL solo cuando el volumen está vacío. Los volúmenes
+existentes conservan sus datos; reiniciar Compose no vuelve a cargar la semilla.
+Use un entorno descartable separado con volúmenes nuevos para probar otra versión.
+No elimine volúmenes compartidos. El README raíz indica la configuración previa al arranque.
 
 ## De dónde sale
 
@@ -35,23 +33,23 @@ npm run seed:generate   # reescribe los cinco archivos
 npm run seed:check      # falla si están desactualizados (corre en CI)
 ```
 
-- **Una sola fuente para todas las bases.** Un id aparece en hasta cuatro bases y en
+- Una sola fuente para todas las bases. Un id aparece en hasta cuatro bases y en
   Keycloak (un profesional está en `users_db`, en `appointments_db` y en el token).
   Escribirlos desde una sola lista los mantiene alineados.
-- **Citas curadas y generadas.** Unas quince citas tienen ids fijos porque los docs,
+- Citas curadas y generadas. Unas quince citas tienen ids fijos porque los docs,
   la colección de Postman y la demo las usan. El resto se genera a partir de los
   horarios con una semilla aleatoria fija, así que la salida es la misma en cada
   corrida y en cada máquina.
-- **Se valida antes de escribir.** El generador rechaza una semilla que rompa el
+- Se valida antes de escribir. El generador rechaza una semilla que rompa el
   esquema o una regla de los servicios: reservas traslapadas de un profesional o de un
   paciente (I1, I2), una cita fuera del horario o dentro de un bloqueo (I3), una
   duración distinta a la del servicio (I4), un servicio o un paciente de otra clínica,
   un adulto en un servicio pediátrico, una nota de una cita no atendida, una cita
   reprogramada sin su reemplazo o una fecha posterior a la fecha de la semilla.
-- **CI la carga.** El job de integración carga los cuatro esquemas y la semilla en
+- CI la carga. El job de integración carga los cuatro esquemas y la semilla en
   PostgreSQL 18, igual que Compose, así que una semilla que rompe una restricción
   rompe el build.
-- **Filas compactas.** Las filas generadas escriben cada id como un número;
+- Filas compactas. Las filas generadas escriben cada id como un número;
   `pg_temp.seed_id(n)` lo convierte en el mismo UUID que `id(n)` construye en `data.mjs`.
 
 Los datos están escritos como se ven el **2026-11-14** (`SEED_NOW`): las citas
@@ -120,7 +118,7 @@ citas en los feriados de Costa Rica.
 
 - Las agendas se llenan conforme se acerca la fecha: el pasado está lleno en cerca
   de una cuarta parte, diciembre menos y enero menos todavía. Febrero de 2027 solo
-  tiene citas curadas, así que la demo siempre encuentra espacios libres ahí.
+  tiene citas curadas, lo que deja espacio para la demo; consulte disponibilidad antes de reservar.
 - Toda cita pasada tiene resultado, salvo unas pocas de los últimos diez días que
   siguen `booked`, como la 804: todavía no se registró su resultado.
 - Toda cita `rescheduled` tiene su reemplazo (`rescheduled_from_id`), con el mismo
@@ -157,8 +155,8 @@ Todas en `America/Costa_Rica`. Los ids son `019a0000-0000-7000-8000-000000000NNN
 ## Pacientes
 
 69 pacientes. Los siete con id fijo (601-607) son los que usan los docs y Postman;
-solo aparecen en el historial pasado, nunca en una reserva futura, así que siempre
-se pueden reservar en una demo. Los otros 62 son generados: cerca de uno de cada
+solo aparecen en el historial pasado, nunca en una reserva futura, así que la semilla inicial deja espacio
+para reservas de demo. Las ejecuciones anteriores pueden ocupar esos espacios. Los otros 62 son generados: cerca de uno de cada
 cuatro es menor de edad, y solo los menores se reservan en servicios pediátricos.
 Algunos no tienen teléfono o correo, lo que ambas columnas permiten.
 

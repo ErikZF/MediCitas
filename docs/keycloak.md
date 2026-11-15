@@ -2,9 +2,9 @@
 
 **English** · [Español](keycloak.es.md)
 
-MediCitas uses **Keycloak 26** as its centralized Identity and Access Management (IAM) provider, implementing a **Single Realm with Custom OIDC Token Mappers** architecture.
-
-This document describes how authentication, multi-tenancy, and domain authorization integrate across MediCitas microservices.
+MediCitas uses Keycloak 26.7.0 in Compose, with one realm and custom OIDC claim
+mappers. The frontend in the diagram is a possible OIDC client; no frontend app
+is implemented in this repository.
 
 ---
 
@@ -56,11 +56,13 @@ flowchart TD
 MediCitas is a SaaS platform serving multiple clinics (tenants):
 - Each clinic is identified by a UUID `clinic_id`.
 - Tenant isolation is strictly enforced in PostgreSQL using **Row-Level Security (RLS)** via session parameters (`app.current_clinic_id`, `app.current_user_id`, `app.current_role`, `app.current_professional_id`).
-- PostgreSQL connections switch to least-privilege roles (`db_admin`, `db_receptionist`, `db_professional`, `medicitas_app`).
+- Domain transactions use `MEDICITAS_DB_ROLES` to select the actor's SQL role;
+  see [database roles](database.md#least-privilege-database-roles). Relays use
+  `medicitas_relay` on their source outbox.
 
 ### Why Single Realm + Custom Claims?
 1. **Stateless Performance**: Microservices independently verify the JWT signature using Keycloak's public JWKS endpoint (`/realms/Sistema_Clinico/protocol/openid-connect/certs`). No database queries are required during token verification.
-2. **Resource Efficiency**: Keycloak avoids the performance degradation and memory bloat caused by maintaining hundreds of individual realms.
+2. **Administration**: One realm keeps roles, clients and mappers in one configuration.
 3. **Seamless Platform Administration**: A `platform_admin` (who has `clinic_id: null`) can manage clinics across the platform without needing complex cross-realm trust federation.
 
 ---
@@ -79,7 +81,9 @@ When an access token is issued, Keycloak's protocol mappers inject the following
 | `professional_id` | `string (UUID)` | Healthcare professional ID in `users_db` (`professional.professional_id`). | `professional` |
 | `realm_access.roles`| `string[]` | Array of assigned Keycloak realm roles. | All |
 
-### Sample Decoded JWT Payload (Professional)
+### Sample decoded JWT payload (professional)
+
+Illustrative IDs and expired timestamps; this is not a usable token.
 ```json
 {
   "exp": 1731369600,
@@ -106,15 +110,16 @@ The shared library `@medicitas/auth` provides middleware and context extractors:
 
 ```typescript
 import { requireTenantContext, extractTenantContext } from '@medicitas/auth';
+import { withTenantTx, MEDICITAS_DB_ROLES } from '@medicitas/db';
 
 // 1. As an Express middleware:
-app.use('/appointments', requireTenantContext, (req, res) => {
+app.use('/appointments', requireTenantContext, async (req, res) => {
   // res.locals.tenant is typed as TenantContext
   const ctx = res.locals.tenant;
   // Use in database transactions
   await withTenantTx(db, ctx, async (tx) => {
     // queries isolated to ctx.clinicId
-  });
+  }, { dbRoles: MEDICITAS_DB_ROLES });
 });
 
 // 2. Or resolving context from req.user:
@@ -135,11 +140,12 @@ export interface TenantContext {
 
 ## 5. Local Setup & Docker Compose
 
-Keycloak is pre-configured in `docker-compose.yml`:
+Prepare `.env` as in the root README. This subset starts identity, its user seed
+and the databases; it does not start the application or Redis:
 
 ```bash
 # Start Keycloak and databases
-docker compose up -d keycloak db_clinics db_users db_appointments db_logs
+docker compose up -d keycloak keycloak-seed db_clinics db_users db_appointments db_logs
 ```
 
 - **Administration Console**: `http://localhost:8080`
@@ -161,7 +167,8 @@ KEYCLOAK_INTERNAL_URL=http://keycloak:8080
 KEYCLOAK_ISSUER=http://localhost:8080/realms/Sistema_Clinico
 KEYCLOAK_AUDIENCE=Medi_Citas
 KEYCLOAK_TEST_CLIENT_ID=integration-tests
-KEYCLOAK_TEST_PASSWORD=test_password
+KEYCLOAK_TEST_PASSWORD=replace-with-local-test-password
+KEYCLOAK_USER_ADMIN_SECRET=replace-with-local-client-secret
 ```
 
 ---
@@ -173,4 +180,16 @@ KEYCLOAK_TEST_PASSWORD=test_password
 npm test -w packages/auth
 ```
 
-All token validation, role checking, and tenant claim parsing are covered by automated unit tests using in-memory RS256 keypairs and a local mock JWKS server.
+These unit tests exercise token validation, roles and tenant claims using in-memory
+RS256 keys and a mock JWKS server.
+
+The internal JWKS URL must be reachable from the service; the issuer must match
+the URL that issued the token. RF1/RF2 use the separate confidential
+`medicitas-user-admin` client, whose service account has `manage-users`.
+The user seed uses Partial Import with `SKIP` by default, preserving existing users
+and passwords. It does not update every existing account on restart.
+
+JWT verification is local to the services after fetching keys: most routes do not
+recheck the current user role/status in `users_db`. Logging out Keycloak sessions
+does not make an already issued JWT fail signature/expiry validation. After a role
+change obtain fresh tokens.

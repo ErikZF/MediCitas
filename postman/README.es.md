@@ -5,8 +5,11 @@
 ## Entorno local
 
 1. Arranque Compose como indica el [README](../README.es.md#arranque-local). El gateway en el
-   puerto 3000 reenvía todas las rutas de dominio; el override local de puertos solo hace falta
-   para llamar a un servicio directamente.
+   puerto 3000 reenvía las rutas de dominio. Esta colección usa URL directas en
+   3001-3004, así que aplique el override de puertos del README para usarla sin cambios.
+   Otra opción es definir `clinicsUrl`, `usersUrl`, `appointmentsUrl` y `auditUrl`
+   con la URL del gateway localmente para llamadas de dominio, y omitir las cuatro
+   peticiones de salud de servicios: `/health` en el gateway solo informa su propia salud.
 2. Importe [el ejemplo seguro de entorno](environments/medicitas.local.example.postman_environment.json)
    en Postman, duplíquelo como **MediCitas Local** y seleccione la copia.
    Las URL suponen puertos 3000-3004 y Keycloak 8080; ajuste a sus mapeos locales.
@@ -69,8 +72,7 @@ la zona de la clínica y espacios libres de disponibilidad; use instantes ISO co
 positivo como `%2B`. RF8 admite hasta 31 fechas incluyendo ambos extremos.
 
 El [recorrido REST Client](../requests/demo.http) es una alternativa de cliente,
-no un prerrequisito. El [contrato](../docs/api.es.md) documenta respuestas esperadas;
-esta plantilla de entorno por sí sola no demuestra una ejecución con la pila completa.
+no un prerrequisito. El [contrato](../docs/api.es.md) documenta las respuestas esperadas.
 
 ## Recorrido de citas y auditoría
 
@@ -94,11 +96,13 @@ Después de salud y lecturas de catálogo/paciente semilla, use las carpetas 05-
    recepción **403** y administrador de clínica **200**, con filtros AND opcionales.
    Un rango con fechas de eventos semilla puede devolver filas; `[]` también es válido.
 
-Los eventos nuevos de contacto/nota quedan en el outbox de su dueño. Falta el relay
-N10 a `logs_db`, así que esos eventos no aparecerán en auditoría mediante esta colección.
+Los eventos nuevos de contacto/nota quedan en el outbox de su dueño. En el arranque
+normal de Compose, audit-service los entrega a `logs_db`, consultando cada segundo.
+Repita la consulta tras la entrega con un rango que incluya la hora del evento nuevo.
+El proceso es asíncrono; un segundo no es un plazo garantizado. Las descripciones
+de la colección que aún dicen que falta N10 están desactualizadas. El encabezado
+del REST Client también es anterior al proxy y al relay.
 El ejemplo secuencial de 409 no sustituye la prueba automatizada de carrera concurrente.
 
-Validación J5: revisión estática de JSON, esquema oficial Postman v2.1, variables,
-sintaxis de scripts, rutas/bodies y enlaces. No se ejecutaron peticiones HTTP: este
-checkout no tenía `.env` ni proyecto Compose corriendo. Ejecute las peticiones elegidas
-contra una pila preparada antes de presentar; las aserciones de estado son expectativas.
+La secuencia de reserva/cancelación y la de desenlace/nota usan citas distintas.
+Ejecútelas contra una pila local descartable preparada.

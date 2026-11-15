@@ -17,12 +17,10 @@ names, ids and e-mail addresses are made up.
 | Audit log | [`database/logs/seed.sql`](../database/logs/seed.sql) | `db_logs` on an empty volume |
 | Keycloak users | [`keycloak/seed-users.json`](../keycloak/seed-users.json) | the `keycloak-seed` job |
 
-PostgreSQL runs the SQL files only when the volume is empty. To load a new version:
-
-```bash
-docker compose down -v
-docker compose up -d --build
-```
+PostgreSQL runs the SQL files only when the volume is empty. Existing volumes
+keep their data; restarting Compose does not reload the seed. Use a separate
+disposable environment with fresh volumes to try a new seed. Do not remove shared
+volumes. The root README lists the configuration required before startup.
 
 ## Where it comes from
 
@@ -35,22 +33,22 @@ npm run seed:generate   # rewrite the five files
 npm run seed:check      # fail if they are out of date (runs in CI)
 ```
 
-- **One source for every database.** An id appears in up to four databases and in
+- One source for every database. An id appears in up to four databases and in
   Keycloak (a professional is in `users_db`, `appointments_db` and the token). Writing
   them from one list keeps them aligned.
-- **Curated and generated appointments.** About fifteen appointments have fixed ids
+- Curated and generated appointments. About fifteen appointments have fixed ids
   because the docs, the Postman collection and the demo use them. The rest is
   generated from the working hours with a fixed random seed, so the output is the
   same on every run and on every machine.
-- **Checked before it is written.** The generator rejects a seed that breaks the
+- Checked before it is written. The generator rejects a seed that breaks the
   schema or a service rule: overlapping bookings for a professional or a patient
   (I1, I2), an appointment outside working hours or inside a block (I3), a duration
   different from the service (I4), a service or a patient from another clinic, an
   adult in a pediatric service, a note on an appointment that was not attended, a
   rescheduled appointment without its replacement, or a date after the seed date.
-- **CI loads it.** The integration job loads the four schemas and the seed into
+- CI loads it. The integration job loads the four schemas and the seed into
   PostgreSQL 18, as Compose does, so a seed that breaks a constraint fails the build.
-- **Compact rows.** Generated rows write each id as a number; `pg_temp.seed_id(n)`
+- Compact rows. Generated rows write each id as a number; `pg_temp.seed_id(n)`
   turns it into the same UUID that `id(n)` builds in `data.mjs`.
 
 The data is written as seen on **2026-11-14** (`SEED_NOW`): earlier appointments
@@ -119,7 +117,7 @@ Rica's public holidays.
 
 - The agendas fill up as the date gets closer: the past is about a quarter full,
   December less, January less still. February 2027 only has curated appointments,
-  so the demo always finds free slots there.
+  leaving room for the demo; consult availability before booking.
 - Every past appointment has an outcome, except a few from the last ten days that
   are still `booked`, like 804: their outcome has not been recorded yet.
 - Every `rescheduled` appointment has its replacement (`rescheduled_from_id`), with
@@ -155,8 +153,8 @@ All in `America/Costa_Rica`. Ids are `019a0000-0000-7000-8000-000000000NNN`.
 ## Patients
 
 69 patients. The seven with fixed ids (601-607) are the ones the docs and Postman
-use; they only appear in the past history, never in a future booking, so they can
-always be booked in a demo. The other 62 are generated: about one in four is a
+use; they only appear in the past history, never in a future booking, so the initial seed leaves room
+for demo bookings. Earlier demo runs can occupy those slots. The other 62 are generated: about one in four is a
 child, and only children are booked for pediatric services. Some have no phone or no
 e-mail, which both columns allow.
 

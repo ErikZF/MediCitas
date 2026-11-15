@@ -2,11 +2,16 @@
 
 **English** · [Español](ci-cd.es.md)
 
-MediCitas has an automated **CI/CD** pipeline built with **GitHub Actions**, designed for the project's microservices architecture and monorepo (npm workspaces).
+MediCitas uses GitHub Actions for CI. `main` contains only `ci.yml`; there is no
+`cd.yml`, image-publishing job or automatic deployment workflow.
 
 ---
 
 ## 1. Pipeline architecture
+
+The diagram below is historical and remains unchanged. Its CD branch, tag trigger
+and sequential job dependencies do not describe the current workflow. The current
+jobs and their dependencies are listed in section 2.
 
 ```mermaid
 flowchart TD
@@ -56,11 +61,12 @@ flowchart TD
    - Sets up Node.js 22 with the `npm` cache.
    - Runs `npm ci`.
    - Builds the shared packages (`npm run build:packages`).
-   - Type-checks the whole monorepo without emitting JS (`npm run typecheck`).
+   - Type-checks the workspaces after compiling shared packages (`npm run typecheck`).
    - Checks that the demo seed files were regenerated after the last change to their data (`npm run seed:check`, see [seed-data.md](seed-data.md)).
 
 2. **`unit-tests`**:
-   - Runs the fast unit tests of every package and microservice (`npm test`).
+   - Runs `npm test` across workspaces, including unit and local HTTP tests.
+     Tests requiring absent PostgreSQL, Redis or temporary Keycloak configuration skip.
 
 3. **`integration-tests` (database and concurrency tests)**:
    - Starts a **PostgreSQL 18** service container (`postgres:18-alpine`).
@@ -83,30 +89,72 @@ flowchart TD
      - `users-service`
      - `appointments-service`
      - `audit-service`
-   - Makes sure any change to code, dependencies or Docker configuration builds cleanly before merging.
+   - Checks image builds with `push: false`; it does not publish or run Compose.
+
+`unit-tests`, `integration-tests`, `e2e-compose` and `docker-build` depend on `quality`, then
+run independently. A push to `docs/**` does not trigger this workflow; a pull
+request targeting `main` does.
 
 ---
 
-## 3. Running the tests locally
+## 3. Running tests locally
 
-One command, the same one CI uses (it only needs Docker and Node.js):
-
-```bash
-npm run test:all
-```
-
-It starts a throwaway PostgreSQL 18 and Redis (`docker-compose.test.yml`, ports 55432 and
-56379), runs every workspace suite against them, removes them, and then runs the
-end-to-end suite against the Compose stack. Options and results:
-[test-report.md](test-report.md#how-to-run-them).
-
-To run one suite against your own database and Redis instead, give it the two URLs; the
-user must be able to create databases:
+From the repository root, install the locked dependencies and build the shared
+packages before running a workspace command:
 
 ```bash
-TEST_DATABASE_URL=postgres://test:test_password@127.0.0.1:55432/postgres \
-TEST_REDIS_URL=redis://127.0.0.1:56379 \
-npm test -w services/appointments-service
+npm ci
+npm run build:packages
+npm run typecheck
+npm test
 ```
 
-(`npm run test:all -- --no-e2e --keep` leaves exactly those two containers running.)
+`npm test` is the workspace runner. Missing infrastructure can produce a successful
+exit with skipped tests; inspect the summary. `npm run test:all` now starts its
+own PostgreSQL/Redis test stack, builds/runs every workspace and then the Compose
+E2E walkthrough. See [runner options and effects](test-report.md). It does not
+prepare the opt-in `j2` realm; a zero exit can still include those skipped tests.
+
+| Configuration | Enables | Requirements |
+| --- | --- | --- |
+| None | Unit tests, mock JWKS, injected HTTP handlers and gateway proxy/startup tests | Node.js >=22.18 and npm |
+| `TEST_DATABASE_URL` | PostgreSQL suites in db, clinics, users, appointments and audit, including race tests | Disposable PostgreSQL 18 instance; administrative test login able to create/drop databases and roles, grant roles and load extensions |
+| Also `TEST_REDIS_URL` | Availability cache and agenda relay integration suites | Disposable Redis reachable from the host; include its password if configured |
+| Also `J2_TEMP_REALM=1` and Keycloak settings | Opt-in real Keycloak RF1/RF2 tests in users-service | Prepared disposable realm `j2`, direct-grant client `j2-tests`, domain roles/mappers, 300-second access tokens and confidential `medicitas-user-admin` with `manage-users` |
+
+The Keycloak tests require `KEYCLOAK_INTERNAL_URL` on `127.0.0.1`, `REALM_NAME=j2`,
+matching `KEYCLOAK_ISSUER`/`KEYCLOAK_AUDIENCE` and `KEYCLOAK_USER_ADMIN_SECRET`.
+No checked-in command prepares this temporary realm. The demo realm
+`Sistema_Clinico` does not satisfy that fixture. Leave the opt-in unset until the
+fixture is prepared; do not run it against shared identity data.
+
+To reproduce the CI workspace job with a prepared disposable test instance,
+set the two test URLs locally and run:
+
+```bash
+npm run test:all -- --external --no-e2e
+```
+
+Bash environment syntax (replace placeholders with disposable test credentials):
+
+```bash
+export TEST_DATABASE_URL='postgres://<user>:<password>@localhost:5433/postgres'
+export TEST_REDIS_URL='redis://:<password>@localhost:6379'
+```
+
+PowerShell equivalent:
+
+```powershell
+$env:TEST_DATABASE_URL = 'postgres://<user>:<password>@localhost:5433/postgres'
+$env:TEST_REDIS_URL = 'redis://:<password>@localhost:6379'
+```
+
+Then `npm test` includes the database suites of all workspaces, with the opt-in
+Keycloak tests still skipped. URL-encode special characters in credentials. These
+helpers create/drop test databases and some roles; use a dedicated test instance.
+Compose `db_appointments` and `redis` can supply dependencies in a disposable setup,
+but existing Compose volumes are not a fresh test environment. Do not reset shared data.
+
+## 4. Coverage
+
+Per-requirement and invariant coverage is in [test-report.md](test-report.md).

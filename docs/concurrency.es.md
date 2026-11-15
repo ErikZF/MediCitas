@@ -1,4 +1,4 @@
-# Concurrencia: el último espacio (tarjeta E11)
+# Concurrencia: el último espacio
 
 [English](concurrency.md) · **Español**
 
@@ -58,7 +58,8 @@ CONSTRAINT no_overlap_professional EXCLUDE USING gist (
 
 ### Por qué las reservas también se esperan entre sí
 
-La restricción sola es correcta, pero la CI mostró su costo con mucha competencia. Cuando
+Las notas previas de desarrollo reportan competencia en CI y en corridas locales.
+Los inserts solapados pueden generar deadlocks. Cuando
 dos transacciones insertan filas solapadas en el mismo instante, cada una encuentra en el
 índice la fila *de la otra*, todavía sin confirmar, y la espera. Eso es un ciclo: PostgreSQL
 lo detecta después de `deadlock_timeout` (1 s) y aborta una con `40P01`, que `withTenantTx`
@@ -73,8 +74,8 @@ El segundo escritor espera el lock, luego encuentra la primera fila ya **confirm
 restricción responde `23P01` al instante: sin deadlock y sin la espera de 1 segundo. Después
 del cambio, ocho corridas locales seguidas de las pruebas de carrera registraron cero
 deadlocks. El costo: las reservas del mismo profesional, o del mismo paciente, corren de una
-en una, cosa que igual tendrían que hacer para competir por el mismo espacio; las reservas de
-profesionales distintos siguen corriendo en paralelo.
+en una, incluso en espacios que no se solapan. Profesionales distintos pueden
+operar en paralelo si no comparten paciente u otro lock.
 
 ## Nivel de aislamiento: READ COMMITTED
 
@@ -94,8 +95,8 @@ restricción lo resuelve al escribir.
   (`slot_taken`).
 - Rastrea dependencias de lectura (predicate locks), así que aborta transacciones que en
   realidad no chocaban. Con carga, eso significa más reintentos y más latencia.
-- No protege nada adicional: cada invariante importante ya es una restricción, un trigger
-  o un lock.
+- Para los solapes locales, las restricciones y locks aportan la garantía elegida.
+  SERIALIZABLE no incorpora las lecturas externas de catálogo/paciente a la transacción.
 
 **Por qué no REPEATABLE READ.** Le da a cada transacción una foto fija, lo que no ayuda:
 las dos seguirían viendo el espacio libre. Además, en PostgreSQL puede abortar un update con
@@ -107,20 +108,22 @@ las dos seguirían viendo el espacio libre. Además, en PostgreSQL puede abortar
 | --- | --- | --- |
 | **I1** sin solapes por profesional | `no_overlap_professional` (EXCLUDE) | `init.sql` |
 | **I2** sin solapes por paciente en una clínica | `no_overlap_patient` (EXCLUDE) | `init.sql` |
-| **I3** dentro del horario, fuera de bloqueos | Validaciones dentro de la transacción más un **advisory lock de transacción** por profesional, que toman las reservas, las reprogramaciones y los cambios de agenda | `db/locks.ts` |
-| **I4** duración fijada por el servicio | El body no puede enviarla; `CHECK (ends_at = starts_at + duration_minutes)` | `slot-rules.ts`, `init.sql` |
+| **I3** validación al reservar; cambios posteriores pueden dejar conflictos | Validaciones dentro de la transacción más un **advisory lock de transacción** por profesional, que toman las reservas, las reprogramaciones y los cambios de agenda | `db/locks.ts` |
+| **I4** duración del catálogo al reservar/reprogramar | El body no puede enviarla; `CHECK (ends_at = starts_at + duration_minutes)` | `slot-rules.ts`, `init.sql` |
 | **I7** cancelar libera el espacio al instante | Las restricciones solo cuentan `booked`; el cambio y la liberación son un solo `COMMIT` | `init.sql`, `lifecycle.service.ts` |
 | **RF13** solo transiciones válidas | `SELECT ... FOR UPDATE` sobre la cita, más un trigger que impide salir de un estado final | `lifecycle.service.ts`, `init.sql` |
 
-**Por qué I3 necesita un lock.** Una reserva revisa los bloqueos, y un bloqueo nuevo busca
+**Cómo se ordenan los cambios de agenda.** Una reserva revisa los bloqueos, y un bloqueo nuevo busca
 las reservas con las que se cruza. Sin coordinación, las dos cosas pueden correr al mismo
 tiempo: la reserva no ve el bloqueo, el bloqueo no ve la reserva, y ambas confirman. El lock del
 profesional impone un orden: una reserva y un cambio de agenda del mismo profesional nunca
 corren al mismo tiempo. Quien llega segundo ve al primero: una
 reserva que llega después recibe **422 `professional_unavailable`**, y un bloqueo que llega
 después devuelve la reserva en su lista de `conflicts` (RF6). Es un lock de transacción
-(`pg_advisory_xact_lock`): se libera en el `COMMIT` o el `ROLLBACK` y es seguro detrás de
-PgBouncer en modo transacción.
+(`pg_advisory_xact_lock`): se libera en el `COMMIT` o el `ROLLBACK`. Un bloqueo
+posterior puede dejar citas reservadas como conflictos (RF6), y reemplazar el horario
+no revalida las reservas existentes. Por eso no se garantiza el I3 literal para toda
+cita vigente en todo momento: el lock ordena escrituras, pero no resuelve esos conflictos.
 
 **Reprogramar (RF10)** corre en una sola transacción: bloquea la cita vieja (`FOR UPDATE`),
 la marca `rescheduled` e inserta la nueva. Como la fila vieja deja de contar primero, mover
@@ -138,19 +141,20 @@ horario está tomado, toda la transacción hace rollback y la reserva original q
 - **Cómo se evitan los deadlocks.**
   - Cada transacción toma sus advisory locks en **un orden global**: los profesionales
     ordenados por id y luego el paciente. Reprogramar hacia otro profesional toma los dos
-    profesionales así, de modo que dos escritores nunca pueden esperarse en ciclo.
+    profesionales así. Reduce los ciclos entre advisory locks; los locks de filas
+    y otras operaciones aún pueden generar deadlocks, por lo que se conservan reintentos.
   - La carrera entre dos inserts solapados sin confirmar, que PostgreSQL solo puede romper
     con un deadlock, no puede ocurrir: los locks ponen esos inserts en fila (ver arriba).
-  - Las llamadas a otros servicios (catálogo, pacientes) ocurren **antes** de abrir la
-    transacción, y las invalidaciones de Redis **después** del `COMMIT`. Un reintento nunca
+  - Las llamadas a otros servicios (catálogo, pacientes) ocurren antes de la
+    transacción que modifica datos, y las invalidaciones de Redis **después** del `COMMIT`. Un reintento nunca
     las repite, y ningún lock queda tomado mientras se espera a la red.
 
 ## La caché no puede crear una segunda ganadora
 
 La disponibilidad puede salir de Redis, pero una reserva nunca lee la caché: decide contra
 PostgreSQL. Aunque una copia vieja mostrara libre un espacio tomado, el `INSERT` fallaría
-con 409. La caché solo puede volver una respuesta lenta o vieja, y el caso viejo ya lo
-impide I8 (ver [cache.es.md](cache.es.md)).
+con 409. La consistencia de caché tiene límites ante fallos y múltiples réplicas
+(ver [cache.es.md](cache.es.md)); I1 e I2 no dependen de una respuesta de caché vigente.
 
 ## Alternativas descartadas
 
@@ -164,18 +168,21 @@ impide I8 (ver [cache.es.md](cache.es.md)).
 
 ## Cómo se demuestra
 
-| Prueba | Qué demuestra |
+| Prueba | Aserciones esperadas |
 | --- | --- |
 | [`tests/race/test.ts`](../services/appointments-service/tests/race/test.ts) | 2 recepcionistas, mismo espacio, **100 iteraciones**: siempre exactamente un 201 y un 409 `slot_taken`, y una sola fila. Luego **50** a la vez: un 201 y 49 409. El mismo paciente con dos profesionales: 409 `patient_overlap` (I2). Al final, ningún profesional tiene dos citas `booked` solapadas (I1). |
 | [`tests/race/block-vs-booking.test.ts`](../services/appointments-service/tests/race/block-vs-booking.test.ts) | Una reserva y un bloqueo para la misma hora, **60 iteraciones** (I3): o el bloqueo reporta la reserva como conflicto, o la reserva recibe 422. Si se quita el lock de la reserva, falla en las primeras iteraciones. |
 | [`tests/integration/lifecycle.test.ts`](../services/appointments-service/tests/integration/lifecycle.test.ts) | Cancelar libera el tiempo al instante (I7); dos recepcionistas que reprograman la misma cita reciben un 201 y un 409; una reprogramación fallida hace rollback; el trigger rechaza transiciones inválidas incluso sin el servicio (RF13). |
 | [`packages/db/tests`](../packages/db/tests) | READ COMMITTED se fija de forma explícita; reintentos de `40001`/`40P01`; nada del contexto de un tenant sobrevive a un commit o un rollback. |
 
-Cada prueba pasa por HTTP al servicio real y al esquema real (restricciones, triggers y RLS)
-sobre una base desechable:
+Las pruebas de carrera y ciclo de vida usan handlers HTTP y PostgreSQL reales
+en bases desechables, con identidad y catálogo/paciente inyectados. `packages/db`
+incluye unitarias e integración SQL directa. Desde Bash, después de instalar dependencias
+y compilar paquetes compartidos, apunte solo a una instancia PostgreSQL 18
+descartable con un login administrativo de pruebas:
 
 ```bash
-TEST_DATABASE_URL=postgres://<usuario>:<contraseña>@localhost:5433/appointments_db \
+TEST_DATABASE_URL='postgres://<usuario>:<contraseña>@localhost:5433/postgres' \
 npm test -w services/appointments-service
 ```
 

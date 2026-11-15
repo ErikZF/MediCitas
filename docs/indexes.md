@@ -1,4 +1,4 @@
-# Indexes justified by their plans (card E10)
+# Indexes justified by their plans
 
 **English** · [Español](indexes.es.md)
 
@@ -10,7 +10,7 @@ The full `EXPLAIN (ANALYZE, BUFFERS)` output is in [indexes-plans.md](indexes-pl
 ## How it was measured
 
 ```bash
-TEST_DATABASE_URL=postgres://<user>:<password>@localhost:5433/appointments_db \
+TEST_DATABASE_URL='postgres://<user>:<password>@localhost:5433/postgres' \
 npm run explain:indexes -w services/appointments-service
 ```
 
@@ -26,9 +26,10 @@ creates two throwaway databases from the real `init.sql` files and loads:
 It then runs each query **as `medicitas_app` with the clinic context loaded**, so the RLS
 policies are part of the plan, exactly as in production. Each query runs twice: with the
 indexes and query text from before E10, and with the current ones. Times are the median of
-5 runs on a 2 vCPU container with PostgreSQL 16 (production uses 18; the plans are the same
-kind). Buffers are 8 KB pages read from memory or disk: they show the work, the time shows
-its cost on this machine.
+5 previously recorded runs on a 2 vCPU container with PostgreSQL 16. Compose uses
+18. Buffers are 8 KB pages read from memory or disk. Use an
+administrative login on a disposable PostgreSQL 18 test instance: the script
+creates and drops databases. The command uses Bash syntax.
 
 ## Results
 
@@ -55,7 +56,7 @@ cheap; for those the change removes indexes without losing anything.
 
 ## What the plans showed
 
-**1. Under RLS, range operators are never index conditions.** The obvious index for "the
+**1. The recorded RLS plans did not use range overlap as an index condition.** The obvious index for "the
 appointments that overlap a day" is a GiST on `tstzrange(starts_at, ends_at)`, and the
 `EXCLUDE` constraints already have one. But the plans used it only for `clinic_id` and
 `professional_id` and filtered the range row by row. The reason: with RLS on, PostgreSQL only
@@ -68,7 +69,8 @@ indexes are btrees on plain columns, compared with `<` and `>`.
 `starts_at < to AND ends_at > from`, and an index on `starts_at` can only use the first half:
 it scans from the beginning of time up to `to`. The fix comes from the domain: an appointment
 must fit in one working-hours block (I3), and working hours never cross midnight, so **no
-appointment lasts more than a day**. The schema now says so
+appointment lasts more than 1440 minutes**. Local days can vary with daylight saving
+time; the optimization relies on the explicit duration limit. The schema says so
 (`CHECK appointment_within_one_day (duration_minutes <= 1440)`), and the queries add the
 redundant `starts_at > from - 1 day`
 ([`domain/appointment-bounds.ts`](../services/appointments-service/domain/appointment-bounds.ts)).
@@ -80,9 +82,9 @@ With both bounds, RF7 reads 31 pages instead of 3 207.
 The indexes have exactly that order. Equalities first, the range last: after the range
 column, the following columns cannot narrow the scan.
 
-**4. The primary keys already start with `clinic_id`.** Since the sharding-ready keys, every
-primary key is `(clinic_id, id)`. A separate index on `clinic_id` alone duplicates the first
-column of the primary key: it was dropped everywhere.
+**4. Tenant primary keys in these two databases start with `clinic_id`.**
+A separate index on that column duplicates the leading key column. E10 removed
+those duplicates from the tables listed below; clinics/users retain some such indexes.
 
 **5. `status` alone is not selective.** `idx_appointment_status` had five possible values for
 hundreds of thousands of rows and no query that filters only by status. RF7 filters by status
@@ -111,7 +113,7 @@ after the index has already narrowed it to a few rows.
 | `no_overlap_working_hours` (GiST, `EXCLUDE`) | Overlapping shifts, and RF7's read of a professional's week |
 | `professional_service_pkey (clinic_id, professional_id, service_id)` | "Does this professional offer it" and RF8's "who offers it" |
 | `UNIQUE (clinic_id, appointment_id)` on `clinical_note` | One note per appointment, and RF15's lookup |
-| `idx_outbox_pending (created_at) WHERE published_at IS NULL` | The relay (I4) reading pending events in order; partial, so it only holds what is pending |
+| `idx_outbox_pending (created_at) WHERE published_at IS NULL` | Agenda and audit relays reading pending events in order; partial, so it only holds what is pending |
 
 **Dropped**
 
@@ -128,7 +130,7 @@ after the index has already narrowed it to a few rows.
 
 **Without a Stage 1 query yet** (kept, their owners should justify or drop them):
 `idx_appointment_clinic_updated_at`, `idx_appointment_clinic_status_changed_at` (added with
-the lifecycle timestamps, probably for Stage 2 incremental exports) and
+the lifecycle timestamps; no current query justifies them) and
 `idx_idempotency_keys_expires_at` (for a cleanup job that does not exist yet). Before E10,
 the planner even used `idx_appointment_clinic_status_changed_at` for RF20 and RF21, only
 because it starts with `clinic_id`: that was the 7 722-page scan.
@@ -148,8 +150,9 @@ because it starts with `clinic_id`: that was the 7 722-page scan.
 
 ## Applying it to an existing database
 
-New databases get everything from `init.sql`. For a volume created before E10, run as the
-schema owner (both scripts are repeatable):
+New databases get these indexes from `init.sql`. For a volume created before E10,
+review the upgrade scripts and back up its data before running them as schema owner
+(both are repeatable):
 
 ```bash
 psql "$APPOINTMENTS_DB_URL" -f database/updates/appointments/upgrade-e10-indexes.sql

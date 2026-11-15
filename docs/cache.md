@@ -1,10 +1,11 @@
-# Availability cache (card E8)
+# Availability cache
 
 **English** · [Español](cache.es.md)
 
 appointments-service caches the **free windows of one professional on one day** in Redis.
 RF7 (one professional, one day) and RF8 (every professional, a date range) read it first and
-only go to PostgreSQL for the days that are missing.
+load missing days from PostgreSQL. They still query service associations; a cache
+hit does not eliminate every database query.
 
 ## Design
 
@@ -30,15 +31,15 @@ is not what keeps the cache correct.
 **Writers that do not know the clinic's time zone** (cancel, outcome) invalidate the UTC date
 and its two neighbours (`possibleLocalDates`). The extra invalidations are cheap.
 
-**When Redis fails, answers get slower, never stale.**
+A failed invalidation makes the affected process bypass the cache:
 
 - A failed invalidation is retried once.
 - If it still fails, it is queued, and the breaker opens.
 - Before the cache is trusted again, the queue is replayed.
 - If more than 1000 invalidations pile up, the pod skips the cache for one TTL so that every older value has expired.
 
-**If the process dies between the `COMMIT` and the invalidation** (card E14), the queue above
-dies with it. To cover that case, every transaction that changes an agenda also inserts an
+If the process dies between `COMMIT` and invalidation, the in-memory queue is lost.
+When caching is enabled, each transaction that changes an agenda also inserts an
 `AgendaChanged` event in the `outbox` table, in the same transaction
 ([`db/agenda-outbox.ts`](../services/appointments-service/db/agenda-outbox.ts)):
 
@@ -55,10 +56,13 @@ marks them published in the same transaction. If Redis fails, the transaction ro
 the events wait for the next pass. It runs as `medicitas_relay` and only takes
 `AgendaChanged`: `AuditRecorded` events belong to the audit relay.
 
-The direct invalidation still runs first, because it is what makes I8 immediate. The relay
-invalidates the same day again a second later; that costs one extra cache miss and nothing
-else. The worst case drops from the TTL (10 minutes) to about one second, and only when a pod
-dies at that exact moment. The events are only written when the cache is on.
+The direct invalidation runs after commit and before the response. The relay retries
+pending invalidations; its one-second polling interval is not a bound on stale data.
+A process can die after commit, or one process can fail to invalidate while another
+still reads Redis. The breaker and queue are local to each process. Other processes can read a stale
+entry until its pending invalidation is applied. Ordinary versioned fills
+protect later lookups after a successful counter bump; they do not make a read
+already in flight atomic with a concurrent write. Events are written only with caching enabled.
 
 ## Measuring it
 
@@ -82,10 +86,10 @@ these with `MEASURE_REQUESTS` and `MEASURE_CONCURRENCY`.
 *Agenda queries per request* counts the SQL statements that touch `working_hours`,
 `schedule_block` or `appointment`, which is the work the cache is meant to save.
 
-## Results
+## Recorded results
 
-The table shows the median of three runs on a 2 vCPU / 7 GB Linux container, with PostgreSQL 16
-and Redis 7 on the same machine.
+These are previously reported medians of three runs on a 2 vCPU / 7 GB Linux
+container with PostgreSQL 16 and Redis 7. Compose currently uses PostgreSQL 18.
 
 | Cache | p50 | p95 | p99 | Requests/s | Agenda queries per request | Hit rate |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -101,6 +105,10 @@ With the cache on:
 ## Caveats
 
 - **The hit rate is a best case.** Nothing writes during the measurement. In real use every booking bumps a day counter, so the next read of that day is a miss.
-- **The latency that remains is not agenda work.** RF7 still checks in PostgreSQL that the professional offers the service. Every request also goes through JWT checks, RLS session setup and JSON serialisation.
+- **The latency that remains is not agenda work.** RF7 still checks in PostgreSQL that the professional offers the service. The measurement helper injects tenant context, so it measures RLS setup and JSON serialisation but not real Keycloak JWT verification.
 - **clinics-service and users-service are in-memory stand-ins**, so these numbers isolate appointments-service and its database.
-- **The numbers come from a local machine.** In Kubernetes, Redis and PostgreSQL are a network hop away, which makes both rows slower; each PostgreSQL miss costs more than a Redis hit, so the gap should grow, not shrink.
+- The numbers describe that local workload. Network placement, writes, replicas
+  and dependency latency can change the result.
+- Use PostgreSQL 18 and Redis in a disposable test instance. The helper creates and
+  drops databases and requires an administrative test login. The Bash environment
+  assignment above is not PowerShell syntax; see [test setup](ci-cd.md).

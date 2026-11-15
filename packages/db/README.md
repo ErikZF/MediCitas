@@ -4,11 +4,11 @@
 
 Shared data layer for the MediCitas microservices (card E1), built on Drizzle over `pg`.
 
-It solves three things no service should reimplement:
+The services share these functions:
 
-1. **Tenant-aware transactions** (`withTenantTx`): explicit isolation level, the caller's context loaded for the RLS policies, and the least-privilege database role.
-2. **Retries** of `40001` (serialization failure) and `40P01` (deadlock), rerunning the whole transaction.
-3. **PostgreSQL error mapping** to HTTP status codes without leaking database details (`DbError`).
+1. Tenant-aware transactions (`withTenantTx`): explicit isolation level, the caller's context loaded for the RLS policies, and the least-privilege database role.
+2. Retries of `40001` (serialization failure) and `40P01` (deadlock), rerunning the whole transaction.
+3. PostgreSQL error mapping to HTTP status codes without leaking database details (`DbError`).
 
 ## Usage in a service
 
@@ -61,11 +61,16 @@ A context that breaks these rules throws `InvalidTenantContextError` (500) befor
 
 ## Team rules
 
-- **Only SQL inside `withTenantTx`.** A deadlock reruns the whole function, so an HTTP call or a Redis write inside it would run twice. Do external work before the transaction or after it commits.
-- **No session-level settings.** Never `SET` without `LOCAL`, `set_config(..., false)`, `app_reset_session_context()`, `LISTEN/NOTIFY` or session advisory locks. Behind PgBouncer in transaction mode, the next request would inherit this clinic. The integration tests check that nothing survives a commit or a rollback.
+- **Only SQL in callbacks with retries.** A deadlock reruns the whole function, so an HTTP call or a Redis write inside it would run twice. Do external work before the transaction or after it commits.
+- **Keep settings local to the transaction.** Never `SET` without `LOCAL`, `set_config(..., false)`, `app_reset_session_context()`, `LISTEN/NOTIFY` or session advisory locks. Behind PgBouncer in transaction mode, the next request would inherit this clinic. The integration tests check that nothing survives a commit or a rollback.
 - **No named prepared statements** (`.prepare('name')`) while PgBouncer runs without `max_prepared_statements`.
 - **The connection user must be able to assume the roles.** `MEDICITAS_DB_ROLES` maps `clinic_admin` and `platform_admin` to `db_admin`, `receptionist` to `db_receptionist` and `professional` to `db_professional` (one string instead of a map uses the same role for everyone). A superuser or the schema owner can switch to them; any other login needs `GRANT db_admin, db_receptionist, db_professional TO <login>;`. It must not have `BYPASSRLS`.
 - **Service-specific constraint errors:** `constraintErrors` gives meaning to new constraints, for example `{ patient_clinic_id_identification_key: { status: 409, code: 'patient_exists', message: '...' } }`.
+
+RF2 and RF4 claim synchronization perform external work inside transactions with
+`retry: false`. They hold locks while waiting for Keycloak and do not have the
+same retry property as booking. PgBouncer is not deployed in Compose or Kubernetes;
+the rules above prepare for its future use.
 
 ## Environment variables
 
@@ -89,8 +94,12 @@ From the repository root:
 npm install
 npm run typecheck -w packages/db
 npm test -w packages/db       # unit tests; integration tests are skipped without a database
-TEST_DATABASE_URL=postgres://user:pass@localhost:5433/appointments_db npm run test:integration -w packages/db
+TEST_DATABASE_URL='postgres://<user>:<password>@localhost:5433/postgres' npm run test:integration -w packages/db
 ```
+
+The environment assignment example uses Bash. In PowerShell use
+`$env:TEST_DATABASE_URL`; see [test requirements](../../docs/ci-cd.md). Point to
+a disposable PostgreSQL 18 instance: helpers create roles as well as databases.
 
 The integration tests create a throwaway database, apply the real `database/appointments/init.sql` (tables, RLS policies and `medicitas_app`) and drop it at the end, so they need a user that can create databases (the container's `POSTGRES_USER` works). They cover:
 

@@ -1,19 +1,19 @@
-# Propósito de este .md
+# Comparación de estrategias de multi-tenancy
 
 [English](database-comparison.md) · **Español**
 
-Dejar establecida la decisión de arquitectura de por qué usamos RLS.
-Para esto, el enunciado pedía comparar estrategias que pudieran garantizar
-la separación de los datos entre clínicas. Las candidatas fueron:
+Las clínicas comparten tablas en cada base de servicio. Comparamos filtros de
+aplicación, RLS y una base por tenant para elegir cómo aislar sus datos.
 
 ## Row Level Security
 
-Esta es la opción elegida: evita cualquier cruce que las clínicas pudieran tener.
-Le indica al motor de base de datos que solo muestre las filas cuyo id de clínica
-coincide con el id de clínica de la sesión actual.
+RLS es la capa elegida sobre el discriminador `clinic_id`. Las políticas filtran
+filas según la clínica de la transacción, con excepciones por rol para la
+administración de plataforma y los catálogos globales.
 
-Esto además aplica a TODAS las consultas: con RLS tienen una cláusula CHECK que
-rechaza cualquier consulta que no sea de la misma clínica.
+`USING` controla la visibilidad; `WITH CHECK` valida filas insertadas o actualizadas.
+Las políticas requieren contexto verificado y un rol SQL restringido. Superusuarios
+y roles con `BYPASSRLS` lo omiten; no protege frente a un login de base comprometido.
 
 ## Columna discriminadora
 
@@ -21,30 +21,35 @@ Es parecida a RLS, pero no la impone el motor de PostgreSQL. En este caso, la co
 discriminadora se impone en la capa del ORM, haciendo que cada consulta filtre por una
 columna; aquí, la columna discriminadora sería clinic_id.
 
-Esta solución funciona como RLS, pero no se impone a nivel del motor de base de datos,
-así que la responsabilidad recae en el equipo de backend. A cambio, podría quitarle
-algo de carga a la base, según cómo estén implementadas las consultas.
-
-En general es una solución válida, pero no es la que elegiríamos.
+Los filtros mantienen visible la selección de clínica en cada consulta, pero
+omitir uno puede exponer filas.
 
 ## Base de datos por tenant
 
-Tener una base de datos por tenant tiene un gran beneficio y algunas desventajas:
+Una base por tenant separa datos y agrega trabajo operativo:
 
 Beneficios:
-- Tener una base asignada a cada tenant da aislamiento completo.
+- Separar bases reduce consultas accidentales entre tenants; el acceso sigue dependiendo de credenciales y enrutamiento.
 - Si una clínica necesita escalar su tráfico, el sistema permite escalar solo ese tenant.
-- Saber cuánto cobrarle a cada tenant es muy fácil: basta con medir la base de ese tenant.
+- Las métricas por base ayudan a atribuir almacenamiento y actividad a cada tenant.
 
 Desventajas:
 - Tener scripts para crear cada base podría complicar la implementación.
-- La memoria mínima del sistema es bastante alta, porque hay que crear una instancia
-  de Docker, o crear otro archivo .db dentro del mismo contenedor y asumir cambios de contexto.
+- El aprovisionamiento, las migraciones y los respaldos se multiplican por tenant.
+  Las bases pueden compartir una instancia PostgreSQL; no requieren un contenedor cada una.
 
+
+Un esquema por tenant separaría tablas dentro de una misma base, pero
+multiplicaría las migraciones DDL y exigiría enrutar cada clínica a su esquema.
+Lo descartamos para mantener un esquema por servicio.
 
 ## Decisión tomada
 
-Decidimos implementar solo RLS, porque alcanza para imponer la seguridad con la menor pérdida de rendimiento.
+Usamos `clinic_id` y RLS en tablas compartidas, con permisos en la API e identidad
+local a la transacción. Esto mantiene un esquema por servicio y aplica el filtrado
+en el motor. El costo es mantener políticas e inicializar contexto en cada
+transacción. No afirmamos que sea la opción de menor costo de rendimiento. Hay
+una base por servicio; no una base por tenant.
 
 La comparación medida de RLS contra la columna discriminadora sola, sobre las mismas
 consultas y con los mismos intentos de fuga, está en [rls-comparison.es.md](rls-comparison.es.md).

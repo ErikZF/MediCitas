@@ -1,4 +1,4 @@
-# MediCitas API contract (J5)
+# MediCitas API contract
 
 **English** · [Español](api.es.md)
 
@@ -10,12 +10,11 @@ log database. Booking obtains catalog and patient information through injected
 dependencies before its database transaction, keeping external lookups outside
 that transaction. Those catalog, professional and patient lookups are implemented.
 
-Identity is delegated to Keycloak so the domain API does not manage login or
-credentials. Where Bearer verification is wired, the service derives the clinic
-and role from the verified token. Permissions control actions, while PostgreSQL
+Keycloak handles login and stores credentials. User-management routes pass initial
+passwords to Keycloak; the domain API does not issue tokens or store passwords. At normal startup, domain services derive the clinic
+and role from the verified Bearer token. Permissions control actions, while PostgreSQL
 Row-Level Security (RLS) enforces clinic access within database transactions.
-Taking the clinic from identity prevents callers from selecting another tenant
-through request fields; the authentication wiring limits below remain essential.
+The caller cannot select another tenant through request fields.
 
 Availability is a snapshot, not a reservation. Booking therefore leaves the final
 overlap decision to PostgreSQL constraints, which also apply to concurrent inserts.
@@ -38,17 +37,18 @@ through `createApp(deps)`.
 | appointments-service | `/health`, RF4 assignments, RF5-RF13, RF15-RF16, RF20-RF21 below | appointments DB, clinics, users, Keycloak; optional Redis cache/agenda relay | Private network only |
 | audit-service | `/health`, RF19 `/audit/logs`, and the RF18 audit relay in the background | logs DB, Keycloak; appointments and users DBs for the relay | Private network only |
 
-Compose now starts all five HTTP services, four PostgreSQL 18 databases, Keycloak,
+Compose starts all five HTTP services, four PostgreSQL 18 databases, Keycloak,
 its user seed and Redis. Send domain requests to the gateway. It picks the service by path: a professional's
-`/working-hours` and `/blocks` and a patient's `/appointments` go to appointments-service,
+`/working-hours`, `/blocks` and `/services`, and a patient's `/appointments`, go to appointments-service,
 the other `/professionals` and `/patients` routes to users-service. It strips hop-by-hop
 headers and `x-test-context`, adds `X-Forwarded-*`, and answers 502
 `upstream_unavailable`, 504 `upstream_timeout` or 503 `upstream_not_configured` when it
 cannot reach a service. The local port override in the
 [README](../README.md#local-startup) is only for calling a service directly.
 
-**appointments-service dependencies.** Booking, availability and schedules call
-other services with the caller's Bearer token, before any transaction opens:
+Booking, availability and schedules call other services with the caller's Bearer
+token before the transaction that reads or changes the schedule. Rescheduling first
+reads the current appointment in a separate transaction to obtain its service ID:
 
 | Call | Used for | Status today |
 | --- | --- | --- |
@@ -57,7 +57,7 @@ other services with the caller's Bearer token, before any transaction opens:
 | users `GET /patients/:patientId` | The patient belongs to the clinic; only `patientId` is read | Implemented (RF14): 200 `{ patientId }` |
 
 A 404 from those services is answered as 404. Any other failure (403, 5xx,
-timeout, unusable body) is answered as 503 `dependency_unavailable`.
+timeout after 3 seconds, unusable body) is answered as 503 `dependency_unavailable`.
 
 ## Identity, permissions and shared formats
 
@@ -84,7 +84,7 @@ timeout, unusable body) is answered as 503 `dependency_unavailable`.
 - RF3, professional registration, booking, rescheduling, cancellation, outcome, RF19 and RF21 use strict objects:
   extra fields produce 422. Working-hours, block and availability schemas strip
   unknown fields; those fields cannot change the clinic. RF16 consumes no query
-  filters.
+  filters; query parameters are ignored.
 
 Below, **clinic roles** means `clinic_admin`, `receptionist` and `professional`.
 All mounted domain routes can return 401 for missing context, 403 for denied
@@ -105,7 +105,8 @@ No authentication, parameters or body; successful response: 200.
 
 Health does not check PostgreSQL, Keycloak or Redis readiness. Clinics, users and audit
 need valid database configuration to start normally, even to serve health.
-Users also requires `CLINICS_SERVICE_URL`; appointments requires both clinics/users
+Users also requires `CLINICS_SERVICE_URL`; its identity adapter needs the Keycloak
+Admin URL, realm and client secret for user-management calls. Appointments requires both clinics/users
 URLs and valid cache configuration when enabled.
 
 ## Clinic onboarding and users (RF1-RF2)
@@ -169,7 +170,7 @@ still reschedules existing appointments of it.
 
 ## Professional registration and service assignment (RF4)
 
-The following routes require `clinic_admin` with `professional:create`. The specialties
+Registration and assignment require `clinic_admin` with `professional:create`. The specialties
 catalog supports registration without granting service-management permissions.
 
 | Owner | Method and route | Input | Successful output |
@@ -177,6 +178,11 @@ catalog supports registration without granting service-management permissions.
 | clinics | `GET /specialties` | No query | 200 `[{ specialtyId, name }]`, global, ordered by name then ID |
 | users | `POST /professionals` | `{ appUserId, fullName, specialtyIds }` | 201 `{ professionalId, appUserId, fullName, isActive: true, specialtyIds }` |
 | appointments | `PUT /professionals/:professionalId/services/:serviceId` | No fields or query | 204, including repeats |
+
+`GET /professionals/:professionalId` in users-service requires `schedule:read`
+(all clinic roles), a route UUID and no query. It returns 200 `{ professionalId }`;
+clinic administrators also receive `specialtyIds`. Unknown, inactive or other-clinic
+profiles return 404, extra query fields 422, and denied roles 403.
 
 The body is strict: UUID appUserId, trimmed fullName of 1-128 characters, and a
 nonempty array of distinct specialty UUIDs. No query parameters are accepted.
@@ -242,7 +248,7 @@ Only professionals and days with available slots appear. When no slots exist,
 RF7 returns `slots: []` and RF8 returns `professionals: []`, both with 200.
 
 Availability subtracts blocks and `booked` appointments, uses service duration
-and omits past starts. With `REDIS_URL` set, reads go through the Redis cache
+and omits past starts. With `REDIS_URL` set and `CACHE_ENABLED` other than `false`, reads use the Redis cache
 ([cache.md](cache.md)). A listed slot is not reserved.
 
 ## Booking and retrieving an appointment (appointments-service, RF9)
@@ -350,15 +356,15 @@ neither written nor returned. Rejected requests (403, 404, 409, 422) record noth
 The event payload is
 `{ appUserId, patientId, action: "create"|"read"|"update", resource: "clinical_note", resourceId, occurredAt }`;
 it never contains the note text. The audit relay in audit-service copies each event
-into `audit_log` in `logs_db` within about a second (see [RF18 delivery](#rf18-delivery-audit-service)).
+into `audit_log` in `logs_db` asynchronously, polling every second (see [RF18 delivery](#rf18-delivery-audit-service)).
 
 ## Patients (users-service, RF14 partial)
 
 | Method and route | Permission | Success |
 | --- | --- | --- |
-| `POST /patients` | `patient:create` | 201 `{ patientId }`, `Location: /patients/:patientId` |
-| `PATCH /patients/:patientId` | `patient:update` | 204, no body |
-| `GET /patients/:patientId` | `patient:read` | 200 `{ patientId }`: patient belongs to the token clinic |
+| `POST /patients` | `patient:create`: clinic_admin, receptionist | 201 `{ patientId }`, `Location: /patients/:patientId` |
+| `PATCH /patients/:patientId` | `patient:update`: clinic_admin, receptionist | 204, no body |
+| `GET /patients/:patientId` | `patient:read`: all clinic roles | 200 `{ patientId }`: patient belongs to the token clinic |
 
 POST requires identification, fullName and birthDate; phone/email are optional or null.
 PATCH accepts a nonempty subset; omission preserves a field and null clears phone/email.
@@ -371,12 +377,15 @@ within the clinic; 422 invalid_request for invalid/empty input; 503 audit_unavai
 if contact auditing cannot queue (the patient write rolls back).
 The membership response contains only patientId, without contact or other personal fields.
 
-Contact writes atomically queue AuditRecorded in users_db.outbox; the audit relay
-delivers them to logs_db. No contact-reading route is exposed.
+Registration queues `AuditRecorded` in `users_db.outbox`, even with null contact
+values. PATCH queues it when `phone` or `email` is present; edits to other fields
+alone produce no contact event. The audit relay delivers these events to `logs_db`.
+No contact-reading route is exposed, so the professional patient-read permission
+currently yields only membership, not a patient profile.
 
 ## Patient history (appointments-service, RF16)
 
-`GET /patients/:patientId/appointments`, with no body or query filters.
+`GET /patients/:patientId/appointments`, with no body. Query parameters are ignored.
 Permission `appointment:read`: `clinic_admin`, `receptionist`, `professional`,
 within their clinic. Professionals may read appointments of other professionals
 in that clinic; this response includes neither clinical notes nor contact data.
@@ -471,7 +480,9 @@ It inserts them into `audit_log` with `audit_log_id = event_id` and
 `ON CONFLICT DO NOTHING`, as `medicitas_app` with each event's clinic in context, and
 then marks them published. If `logs_db` is down the events wait; if the relay dies
 after inserting, the next pass cannot duplicate them. A malformed event is logged and
-left pending without blocking the others. `AgendaChanged` events are not touched.
+left pending; valid events in the same batch can proceed, but 100 malformed events
+at the head of a source can prevent later events from being selected. Delivery
+latency is not guaranteed. `AgendaChanged` events are not touched.
 
 ## Shared errors
 
@@ -482,8 +493,8 @@ verbatim below.
 | HTTP | Response / cause |
 | --- | --- |
 | 400 | `{"error":"Bad request."}` for malformed JSON |
-| 401 | Missing context: `{"error":"Authentication required."}`. With `requireToken`: `{"error":"Missing access token."}` or `{"error":"Invalid or expired token."}` |
-| 403 | Domain/permissions/RLS: `{"error":"Request rejected.","code":"forbidden"}` |
+| 401 | Clinics/users can return `{"error":"Tenant context required."}`. Missing context: `{"error":"Authentication required."}`. With `requireToken`: `{"error":"Missing access token."}` or `{"error":"Invalid or expired token."}` |
+| 403 | RF1/RF2 permission middleware can return `{"error":"Permission denied."}`. Domain/permissions/RLS: `{"error":"Request rejected.","code":"forbidden"}` |
 | 404 | Resource: `{"error":"Request rejected.","code":"not_found"}`. Missing or unmounted route: `{"error":"Route not found."}` |
 | 409 | Route conflicts; the database adapter also maps `duplicate`, `overlap` and `concurrency_conflict` (transaction retries exhausted), with `error: "Request rejected."` |
 | 413 | JSON body exceeds the parser limit: `{"error":"Request rejected."}` |
@@ -492,7 +503,10 @@ verbatim below.
 | 500 | Unexpected error: `{"error":"Internal server error."}`; invalid JWT configuration: `{"error":"Authentication unavailable."}` |
 
 Errors do not expose internal messages, submitted values or SQLSTATE.
-A 503 does not promise safe POST retries without idempotency.
+A 503 does not promise safe POST retries without idempotency. The gateway has
+a 15-second socket timeout while clinic onboarding allows up to 45 seconds for
+its bootstrap call. A gateway timeout does not establish that onboarding rolled back;
+use the documented recovery rules.
 
 ## Demo collection
 
@@ -501,12 +515,7 @@ and follow its [local environment/token instructions](../postman/README.md).
 
 The versioned [REST Client walkthrough](../requests/demo.http) and its
 [environment example](../requests/.env.example) use direct service URLs and local
-token variables. Its responses are expectations, not full-stack evidence. Use
-seeded users in Keycloak for fresh tokens; never put real tokens or secrets in Git.
+token variables. Use seeded users in Keycloak for fresh tokens; never put real
+tokens or secrets in Git.
 
-## Reviewed evidence and pending work
-
-Cross-checked against current routes, composition roots and existing tests; this
-contract does not claim a complete demo run. Coverage details belong to J7.
-Pending implementation: patient contact reads (only writes are audited today). Full-stack demo validation
-and the automated concurrency proof remain separate from this request walkthrough.
+See [test coverage and execution requirements](ci-cd.md).

@@ -2,11 +2,16 @@
 
 [English](ci-cd.md) · **Español**
 
-MediCitas cuenta con un pipeline automatizado de **CI/CD** implementado con **GitHub Actions**, diseñado para la arquitectura de microservicios y monorepo (npm workspaces) del proyecto.
+MediCitas usa GitHub Actions para CI. `main` contiene solo `ci.yml`; no hay
+`cd.yml`, job de publicación de imágenes ni workflow de despliegue automático.
 
 ---
 
 ## 1. Arquitectura del Pipeline
+
+El diagrama siguiente es histórico y se conserva sin cambios. Su rama CD, el
+disparador por tags y las dependencias secuenciales no describen el workflow
+actual. La sección 2 detalla los jobs y sus dependencias actuales.
 
 ```mermaid
 flowchart TD
@@ -56,11 +61,12 @@ El archivo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) se ejecuta 
    - Configura Node.js 22 con caché de `npm`.
    - Ejecuta `npm ci`.
    - Compila los paquetes compartidos (`npm run build:packages`).
-   - Verifica tipos en todo el monorepo sin emitir JS (`npm run typecheck`).
+   - Verifica tipos de los workspaces después de compilar los paquetes compartidos (`npm run typecheck`).
    - Comprueba que los archivos de la semilla de demo se regeneraron después del último cambio a sus datos (`npm run seed:check`, ver [seed-data.es.md](seed-data.es.md)).
 
 2. **`unit-tests` (Pruebas unitarias)**:
-   - Ejecuta las pruebas unitarias rápidas de todos los paquetes y microservicios (`npm test`).
+   - Ejecuta `npm test` en los workspaces, con unitarias y pruebas HTTP locales.
+     Omite las que requieren PostgreSQL, Redis o configuración temporal de Keycloak ausentes.
 
 3. **`integration-tests` (Pruebas de base de datos y concurrencia)**:
    - Levanta un contenedor de servicio de **PostgreSQL 18** (`postgres:18-alpine`).
@@ -83,30 +89,73 @@ El archivo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) se ejecuta 
      - `users-service`
      - `appointments-service`
      - `audit-service`
-   - Garantiza que cualquier cambio en código, dependencias o configuración Docker compile limpiamente antes de fusionar.
+   - Comprueba builds con `push: false`; no publica imágenes ni arranca Compose.
+
+`unit-tests`, `integration-tests`, `e2e-compose` y `docker-build` dependen de `quality` y luego
+corren de forma independiente. Un push a `docs/**` no dispara este workflow;
+un pull request hacia `main` sí.
 
 ---
 
-## 3. Correr las pruebas en local
+## 3. Ejecutar pruebas localmente
 
-Un solo comando, el mismo que usa CI (solo necesita Docker y Node.js):
-
-```bash
-npm run test:all
-```
-
-Levanta un PostgreSQL 18 y un Redis desechables (`docker-compose.test.yml`, puertos
-55432 y 56379), corre contra ellos las suites de todos los workspaces, los borra, y
-después corre la suite de punta a punta contra la pila de Compose. Opciones y
-resultados: [test-report.es.md](test-report.es.md#cómo-se-corren).
-
-Para correr una sola suite contra su propia base y su propio Redis, pásele las dos URL;
-el usuario debe poder crear bases:
+Desde la raíz, instale las dependencias fijadas y compile paquetes compartidos
+antes de ejecutar comandos de un workspace:
 
 ```bash
-TEST_DATABASE_URL=postgres://test:test_password@127.0.0.1:55432/postgres \
-TEST_REDIS_URL=redis://127.0.0.1:56379 \
-npm test -w services/appointments-service
+npm ci
+npm run build:packages
+npm run typecheck
+npm test
 ```
 
-(`npm run test:all -- --no-e2e --keep` deja corriendo justo esos dos contenedores.)
+`npm test` ejecuta los workspaces. Si falta infraestructura, puede terminar bien
+con pruebas omitidas; revise el resumen. `npm run test:all` ahora levanta su pila
+PostgreSQL/Redis de pruebas, compila/ejecuta todos los workspaces y luego el E2E de
+Compose. Vea [opciones y efectos del runner](test-report.es.md). No prepara el
+realm optativo `j2`; puede terminar con código cero y esas pruebas omitidas.
+
+| Configuración | Habilita | Requisitos |
+| --- | --- | --- |
+| Ninguna | Unitarias, JWKS simulado, handlers HTTP inyectados y proxy/arranque del gateway | Node.js >=22.18 y npm |
+| `TEST_DATABASE_URL` | Suites PostgreSQL de db, clinics, users, appointments y audit, incluidas carreras | Instancia PostgreSQL 18 descartable; login administrativo de pruebas que cree/borre bases y roles, otorgue roles y cargue extensiones |
+| Además `TEST_REDIS_URL` | Integraciones de caché y relay de agenda | Redis descartable alcanzable desde el host; incluya contraseña si está configurada |
+| Además `J2_TEMP_REALM=1` y ajustes de Keycloak | Pruebas optativas RF1/RF2 con Keycloak real en users-service | Realm descartable `j2` preparado, cliente direct-grant `j2-tests`, roles/mappers, tokens de 300 segundos y cliente confidencial `medicitas-user-admin` con `manage-users` |
+
+Las pruebas de Keycloak exigen `KEYCLOAK_INTERNAL_URL` en `127.0.0.1`,
+`REALM_NAME=j2`, `KEYCLOAK_ISSUER`/`KEYCLOAK_AUDIENCE` correspondientes y
+`KEYCLOAK_USER_ADMIN_SECRET`. No hay un comando versionado que prepare ese realm.
+El realm de demo `Sistema_Clinico` no satisface esa fixture. Mantenga desactivada
+la opción hasta prepararla; no la ejecute contra identidades compartidas.
+
+Para reproducir el job de workspaces de CI con una instancia descartable preparada,
+defina localmente las dos URL de pruebas y ejecute:
+
+```bash
+npm run test:all -- --external --no-e2e
+```
+
+Sintaxis Bash (reemplace placeholders con credenciales de pruebas descartables):
+
+```bash
+export TEST_DATABASE_URL='postgres://<user>:<password>@localhost:5433/postgres'
+export TEST_REDIS_URL='redis://:<password>@localhost:6379'
+```
+
+Equivalente PowerShell:
+
+```powershell
+$env:TEST_DATABASE_URL = 'postgres://<user>:<password>@localhost:5433/postgres'
+$env:TEST_REDIS_URL = 'redis://:<password>@localhost:6379'
+```
+
+Con esas variables, `npm test` incluye las suites de base de todos los workspaces;
+las optativas de Keycloak siguen omitidas. Codifique caracteres especiales de las
+credenciales para URL. Los helpers crean/borran bases de prueba y algunos roles;
+use una instancia dedicada. `db_appointments` y `redis` de Compose pueden servir
+en un entorno descartable, pero sus volúmenes existentes no son un entorno nuevo.
+No reinicie datos compartidos.
+
+## 4. Cobertura
+
+La cobertura por requisito e invariante está en [test-report.es.md](test-report.es.md).

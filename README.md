@@ -3,7 +3,6 @@
 **English** · [Español](README.es.md)
 
 [![CI](https://github.com/ErikZF/MediCitas/actions/workflows/ci.yml/badge.svg)](https://github.com/ErikZF/MediCitas/actions/workflows/ci.yml)
-[![CD - Publish Images](https://github.com/ErikZF/MediCitas/actions/workflows/cd.yml/badge.svg)](https://github.com/ErikZF/MediCitas/actions/workflows/cd.yml)
 
 Multi-tenant SaaS platform for medical appointments (semester project, Stage 1 · OLTP), built as Node.js + TypeScript microservices.
 
@@ -18,7 +17,7 @@ services/
   audit-service/         append-only audit log                   → logs_db
   Dockerfile             image for any service (--build-arg SERVICE=...)
 packages/                shared libraries the services import by name,
-                         for example @medicitas/http and @medicitas/auth (each with its README)
+                         for example @medicitas/http, @medicitas/auth and @medicitas/db
 database/                schema of each database
 deploy/                  Kubernetes (Kustomize + Kind) manifests and deploy scripts
 keycloak/                versioned realm
@@ -36,7 +35,7 @@ npm install
 npm run build        # shared packages, then services
 npm run typecheck
 npm test             # unit tests; integration tests skip without a database
-npm run test:all     # every test, with its own databases (needs Docker)
+npm run test:all     # workspace suites and Compose E2E (needs Docker; see limits)
 npm run dev -w services/edge-gateway
 ```
 
@@ -70,11 +69,17 @@ volumes**; existing volumes are preserved and are not migrated automatically.
 The seed job should exit with code 0; it does not remain running. Use
 `docker compose logs --tail=50 <service>` to investigate startup failures.
 
-Only the gateway is published to the host. It forwards every domain route to the
+Only the gateway publishes an HTTP application port by default. Keycloak is on
+8080; PostgreSQL appointments/users/logs/clinics are on 5433/5434/5435/5436, and
+Redis is on 6379. These mappings are not restricted to loopback in Compose; use
+this development setup on a trusted machine. `private_net` is internal; only
+Keycloak and the gateway also join `public_net`. The gateway forwards domain routes to the
 service that owns it, Authorization included, so the whole API is at
 `http://localhost:3000` (for example `GET /availability?...`, `POST /appointments`,
-`GET /audit/logs`). Every service still verifies the token itself. A service that is
-down answers 502 `upstream_unavailable`. Check a private service inside Compose:
+`GET /audit/logs`). Every service still verifies the token itself. An unreachable upstream produces 502
+`upstream_unavailable`; a 15-second socket timeout produces 504 `upstream_timeout`,
+and a missing upstream URL produces 503 `upstream_not_configured`. The gateway
+forwards tokens; domain services authenticate them. Check a private service inside Compose:
 
 ```bash
 docker compose exec clinics-service node -e "fetch('http://127.0.0.1:' + process.env.API_INTERNAL_PORT + '/health').then(r => r.json()).then(console.log)"
@@ -112,17 +117,22 @@ identity or cache readiness test. Authenticated domain calls need fresh Keycloak
 tokens with matching clinic/role claims; see the [API contract](docs/api.md).
 Stop the stack with `docker compose stop` (with the same `-f` options if used).
 
+`npm test` can skip integrations when PostgreSQL, Redis or Keycloak configuration
+is absent. See [test requirements and CI coverage](docs/ci-cd.md) and the
+[Postman walkthrough](postman/README.md) for demo prerequisites.
+
 ## Tests
 
 ```bash
 npm run test:all
 ```
 
-One command runs every test: it starts a throwaway PostgreSQL 18 and Redis, runs the
-unit, integration and race tests of every workspace, and then the end-to-end suite
-through the gateway of the Compose stack (it runs `docker compose up -d --build` first,
-so copy `.env.example` to `.env` before). It needs Docker and Node.js, nothing else. Options,
-results and which test covers each requirement and invariant: [test report](docs/test-report.md).
+The runner starts disposable PostgreSQL 18 and Redis for workspace suites, then
+runs the Compose end-to-end walkthrough. Prepare `.env` as above and install npm
+dependencies first. Stage 2 rebuilds and changes the demo stack; it preserves
+existing database volumes. The temporary-realm Keycloak tests still need separate
+configuration and can skip. Default stage-1 cleanup removes its test containers
+and volumes. Options, recorded results and limits: [test report](docs/test-report.md).
 
 ## Documentation
 
@@ -131,7 +141,8 @@ results and which test covers each requirement and invariant: [test report](docs
 | API contract | [docs/api.md](docs/api.md) | [docs/api.es.md](docs/api.es.md) |
 | Postman demo | [postman/README.md](postman/README.md) | [postman/README.es.md](postman/README.es.md) |
 | Databases and RLS | [docs/database.md](docs/database.md) | [docs/database.es.md](docs/database.es.md) |
-| Data model: dictionary and 3NF | [docs/data-model.md](docs/data-model.md) | [docs/data-model.es.md](docs/data-model.es.md) |
+| Data dictionary | [docs/data-dictionary.md](docs/data-dictionary.md) | [docs/data-dictionary.es.md](docs/data-dictionary.es.md) |
+| Normalization to 3NF | [docs/normalization.md](docs/normalization.md) | [docs/normalization.es.md](docs/normalization.es.md) |
 | Multi-tenancy architecture | [docs/multitenancy.md](docs/multitenancy.md) | [docs/multitenancy.es.md](docs/multitenancy.es.md) |
 | Multi-tenancy comparison | [docs/database-comparison.md](docs/database-comparison.md) | [docs/database-comparison.es.md](docs/database-comparison.es.md) |
 | RLS against the discriminator column, measured | [docs/rls-comparison.md](docs/rls-comparison.md) | [docs/rls-comparison.es.md](docs/rls-comparison.es.md) |
@@ -145,4 +156,37 @@ results and which test covers each requirement and invariant: [test report](docs
 | Kubernetes deployment | [deploy/README.md](deploy/README.md) | [deploy/README.es.md](deploy/README.es.md) |
 | Data layer `@medicitas/db` | [packages/db/README.md](packages/db/README.md) | [packages/db/README.es.md](packages/db/README.es.md) |
 
-Every document has an English version (`name.md`) and a Spanish one (`name.es.md`), with a link at the top to switch language. When you change a document, update both versions in the same PR.
+Maintained guides have English and Spanish versions linked at the top. Update
+both together. The historical [index-plan capture](docs/indexes-plans.md) is kept
+in its original language. The deployment guide covers an optional local setup;
+Compose remains the Stage 1 startup path.
+
+## AI usage declaration
+
+We used artificial intelligence to implement a substantial part of the MediCitas
+code and to create tests. The submission combines code we wrote ourselves with
+code generated by AI from our instructions.
+
+The three of us planned the project and worked on its design together, taking
+our consultation with the professor as a starting point. Following that discussion,
+we decided to use a microservices architecture and researched how to implement it.
+From there, we worked out which technologies to use, how to approach each problem
+and which good practices to follow. Those decisions guided our requests to AI:
+we specified what it should implement, which technologies to use and the conditions
+the implementation had to meet.
+
+We also used AI to speed up writing tests, given the amount of work they required.
+We specified the types of tests, the cases we wanted to cover, the expected
+behavior and the tools to use. With those instructions, AI helped us produce
+the test code.
+We also used AI to refine the wording of the documentation, organize the
+explanations and give them a clearer, more presentable format. It helped us polish
+the text and keep a consistent style across the guides, making the work easier
+to read and consult. We also used AI to translate the documentation between
+Spanish and English.
+
+We reviewed the generated code to check that it made sense, followed the agreed
+design and addressed the problem. We believe AI can speed up much of the
+implementation when the team understands what it wants to build and guides that
+work. We remain responsible for the decisions, the review and the final content
+of this submission.

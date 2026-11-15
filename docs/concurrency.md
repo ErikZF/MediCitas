@@ -1,4 +1,4 @@
-# Concurrency: the last slot (card E11)
+# Concurrency: the last slot
 
 **English** · [Español](concurrency.es.md)
 
@@ -58,7 +58,8 @@ CONSTRAINT no_overlap_professional EXCLUDE USING gist (
 
 ### Why bookings also wait for each other
 
-The constraint alone is correct, but CI showed its cost under contention. When two
+Earlier development notes report contention in CI and local runs. Overlapping
+inserts can deadlock: when two
 transactions insert overlapping rows at the same moment, each one finds the *other's*
 uncommitted row in the index and waits for it. That is a cycle: PostgreSQL detects it
 after `deadlock_timeout` (1 s) and aborts one with `40P01`, which `withTenantTx` retries.
@@ -71,9 +72,8 @@ the patient** before inserting ([`db/locks.ts`](../services/appointments-service
 The second writer waits for the lock, then finds the first row already **committed**, and
 the constraint answers `23P01` at once: no deadlock, no 1-second wait. After the change,
 eight consecutive local runs of the race tests logged zero deadlocks. The cost: bookings of
-the same professional, or of the same patient, run one at a time, which they would have
-to do anyway to compete for the same slot; bookings of different professionals still run
-in parallel.
+the same professional, or of the same patient, run one at a time, including non-overlapping slots. Different professionals can run in parallel when
+they do not share a patient or another lock.
 
 ## Isolation level: READ COMMITTED
 
@@ -91,8 +91,8 @@ above, and the constraint resolves it at write time.
   slot is taken. With the constraint, the answer is direct and specific (`slot_taken`).
 - It tracks read dependencies (predicate locks), so it aborts transactions that did not
   actually conflict. Under load that means more retries and more latency.
-- It protects nothing extra here: every invariant that matters is already a constraint,
-  a trigger or a lock.
+- For local overlap checks, the constraints and locks provide the chosen guarantee.
+  SERIALIZABLE would not make external catalog/patient reads part of this transaction.
 
 **Why not REPEATABLE READ.** It gives each transaction a fixed snapshot, which does not
 help: both would still see the slot as free. In PostgreSQL it can also abort an update
@@ -104,19 +104,22 @@ with `40001` when a row changed after the snapshot.
 | --- | --- | --- |
 | **I1** no overlap per professional | `no_overlap_professional` (EXCLUDE) | `init.sql` |
 | **I2** no overlap per patient in a clinic | `no_overlap_patient` (EXCLUDE) | `init.sql` |
-| **I3** inside working hours, outside blocks | Checks inside the transaction plus a **transaction advisory lock** per professional, taken by bookings, rescheduling and schedule changes | `db/locks.ts` |
-| **I4** duration fixed by the service | The body cannot send it; `CHECK (ends_at = starts_at + duration_minutes)` | `slot-rules.ts`, `init.sql` |
+| **I3** checks for new bookings; later schedule changes can leave conflicts | Checks inside the transaction plus a **transaction advisory lock** per professional, taken by bookings, rescheduling and schedule changes | `db/locks.ts` |
+| **I4** duration taken from catalog at booking/reschedule | The body cannot send it; `CHECK (ends_at = starts_at + duration_minutes)` | `slot-rules.ts`, `init.sql` |
 | **I7** cancelling frees the slot at once | The constraints only count `booked`; the change and the release are one `COMMIT` | `init.sql`, `lifecycle.service.ts` |
 | **RF13** valid transitions only | `SELECT ... FOR UPDATE` on the appointment, plus a trigger that rejects leaving a final state | `lifecycle.service.ts`, `init.sql` |
 
-**Why I3 needs a lock.** A booking checks the blocks, and a new block looks for the
+**How schedule changes are ordered.** A booking checks the blocks, and a new block looks for the
 bookings it overlaps. Without coordination both can run at the same time: the booking
 sees no block, the block sees no booking, and both commit. The professional's lock forces an
 order: a booking and a schedule change of the same professional never run at the same
 time. Whoever goes second sees the first: a booking that comes later
 gets **422 `professional_unavailable`**, and a block that comes later returns the booking
 in its `conflicts` list (RF6). It is a transaction-level lock (`pg_advisory_xact_lock`):
-it is released on `COMMIT` or `ROLLBACK` and is safe behind PgBouncer in transaction mode.
+it is released on `COMMIT` or `ROLLBACK`. A later block can leave existing booked
+appointments as conflicts (RF6), and replacing working hours does not revalidate
+existing bookings. The literal I3 claim for every booked appointment at all times
+is therefore not guaranteed; the lock orders writes without resolving those conflicts.
 
 **Rescheduling (RF10)** runs in one transaction: it locks the old appointment
 (`FOR UPDATE`), marks it `rescheduled` and inserts the new one. Because the old row
@@ -135,10 +138,11 @@ original booking stays as it was.
 - **Avoiding deadlocks.**
   - Every transaction takes its advisory locks in **one global order**: the professionals
     sorted by id, then the patient. Rescheduling to another professional takes both
-    professionals that way, so two writers can never wait for each other in a cycle.
+    professionals that way. This reduces cycles among advisory locks; row locks
+    and other database operations can still deadlock, so retries remain necessary.
   - The race between two uncommitted overlapping inserts, which PostgreSQL can only break
     with a deadlock, cannot happen: the locks put those inserts in line (see above).
-  - Calls to other services (catalog, patients) happen **before** the transaction opens,
+  - Calls to other services (catalog, patients) happen before the mutating transaction,
     and Redis invalidations **after** the `COMMIT`. A retried transaction never repeats them,
     and no lock is held while waiting on the network.
 
@@ -146,8 +150,8 @@ original booking stays as it was.
 
 Availability may be served from Redis, but a booking never reads the cache: it decides
 against PostgreSQL. Even if a stale copy showed a taken slot as free, the `INSERT` would
-fail with 409. The cache can only make an answer slow or stale, and I8 already prevents
-the stale case (see [cache.md](cache.md)).
+fail with 409. Cache consistency has separate failure and multi-replica limits
+(see [cache.md](cache.md)); I1/I2 do not depend on a fresh cache answer.
 
 ## Alternatives we discarded
 
@@ -161,18 +165,21 @@ the stale case (see [cache.md](cache.md)).
 
 ## How it is shown
 
-| Test | What it proves |
+| Test | Expected assertions |
 | --- | --- |
 | [`tests/race/test.ts`](../services/appointments-service/tests/race/test.ts) | 2 receptionists, same slot, **100 iterations**: always exactly one 201 and one 409 `slot_taken`, and one row. Then **50** at once: one 201 and 49 409. Same patient with two professionals: 409 `patient_overlap` (I2). Finally, no professional has two overlapping `booked` appointments (I1). |
 | [`tests/race/block-vs-booking.test.ts`](../services/appointments-service/tests/race/block-vs-booking.test.ts) | A booking and a block for the same time, **60 iterations** (I3): either the block reports the booking as a conflict, or the booking gets 422. Removing the lock from the booking makes it fail within the first iterations. |
 | [`tests/integration/lifecycle.test.ts`](../services/appointments-service/tests/integration/lifecycle.test.ts) | Cancelling frees the time at once (I7); two receptionists rescheduling the same appointment get one 201 and one 409; a failed reschedule rolls back; the trigger rejects invalid transitions even without the service (RF13). |
 | [`packages/db/tests`](../packages/db/tests) | READ COMMITTED is set explicitly; retries of `40001`/`40P01`; nothing of a tenant's context survives a commit or a rollback. |
 
-Every test goes through HTTP to the real service and the real schema (constraints,
-triggers and RLS) on a throwaway database:
+The race/lifecycle tests use real HTTP handlers and PostgreSQL on throwaway databases,
+with injected identity and catalog/patient dependencies. `packages/db` tests include
+unit and direct SQL integration checks. From Bash, after installing dependencies
+and building shared packages, point only to a disposable PostgreSQL 18 instance
+with an administrative test login:
 
 ```bash
-TEST_DATABASE_URL=postgres://<user>:<password>@localhost:5433/appointments_db \
+TEST_DATABASE_URL='postgres://<user>:<password>@localhost:5433/postgres' \
 npm test -w services/appointments-service
 ```
 

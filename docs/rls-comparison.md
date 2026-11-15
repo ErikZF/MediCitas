@@ -12,6 +12,7 @@ and measurements.* The written comparison of strategies and the decision are in
 
 Both keep every clinic in the same tables, told apart by a `clinic_id` column (shared
 schema). They differ in **who enforces** that a query only touches its own clinic.
+The comparison below covers tenant queries in `appointments_db` and `logs_db`.
 
 | | Discriminator column | Row-Level Security |
 | --- | --- | --- |
@@ -20,11 +21,12 @@ schema). They differ in **who enforces** that a query only touches its own clini
 | A query that forgets the filter | Sees every clinic | Sees only its clinic |
 | A write to another clinic | Goes through | Rejected (`WITH CHECK`) |
 | Without context | Not applicable | Sees nothing (fails closed) |
-| Bypassed by | Any bug in any query | Superusers and roles with `BYPASSRLS`, which the services never use |
+| Bypassed by | Any bug in any query | Superusers and roles with `BYPASSRLS`; domain transactions use restricted actor roles |
 
-MediCitas uses **both**: the column is in every table, first in every primary key and every
-index, and the services filter by it where it helps the plan; RLS is what guarantees I5.
-This document measures what each one costs and what each one protects.
+MediCitas uses `clinic_id` with RLS. The column scopes tenant rows and leads most
+composite keys and query indexes; services also filter by it where it helps the plan.
+Compose uses a privileged development login, so domain transactions switch to
+restricted actor roles for RLS to apply. This comparison measures isolation and query cost.
 
 ## How it was compared
 
@@ -33,7 +35,9 @@ TEST_DATABASE_URL=postgres://<user>:<password>@localhost:55432/postgres \
 npm run measure:rls -w services/appointments-service
 ```
 
-`npm run test:all -- --no-e2e --keep` leaves a PostgreSQL 18 running at that address.
+`npm run test:all -- --no-e2e --keep` leaves a PostgreSQL 18 running at that address
+with the default test port. Use a disposable instance: the measurement script needs
+privileges to create and drop temporary databases and its test role.
 
 [`scripts/measure-rls.ts`](../services/appointments-service/scripts/measure-rls.ts) loads
 the same volume as the index measurements ([indexes.md](indexes.md)): **328 230
@@ -48,14 +52,13 @@ ways, on the same data:
 | **Both** | `medicitas_app`, with the session context | Yes | On (what the services do) |
 | **RLS, cached** / **Both, cached** | Same as above, after rewriting the policies with `(SELECT app_current_role())` instead of `app_current_role()` | | On |
 
-Times are the median of 7 runs on a 2 vCPU container with PostgreSQL 16 (Compose uses 18;
-the plans are of the same kind). Buffers are 8 KB pages: they show the work, the time its
-cost on that machine. The script also checks that every variant returns the same rows.
+Times are the median of 7 runs on a 2 vCPU container with PostgreSQL 16.
+Compose uses PostgreSQL 18. Buffers are 8 KB pages: they show the work, the time its
+cost on that machine. The script also checks that every variant returns the same number of rows.
 
-The services now run each request as the database role of its actor (`db_admin`,
-`db_receptionist`, `db_professional`; see [database.md](database.md#least-privilege-database-roles)).
-The policies apply to every role alike, so the plans and costs measured as `medicitas_app`
-are the ones they get.
+These measurements use `medicitas_app`. Current domain handlers use `db_admin`,
+`db_receptionist` or `db_professional` according to the actor, with both SQL grants
+and RLS; see [database roles](database.md#least-privilege-database-roles).
 
 ## Isolation
 
@@ -120,11 +123,10 @@ Differences under about 0.05 ms are noise on this machine.
   `app_current_clinic_id() = 'A'`, evaluated once per query. As a side effect it is a free
   consistency check: if the code and the session ever disagreed on the clinic, the query
   would return nothing.
-- **Caching the functions removes the cost.** Written as `(SELECT app_current_role())`, the
-  call becomes an *InitPlan*: evaluated once per query, and its result reused for every row.
-  With the policies rewritten that way, RLS costs the same as the column (RF21: 1.24 ms
-  against 1.60 ms; RF20: 0.15 ms against 0.16 ms) and keeps every guarantee: the isolation
-  checks of the script give the same result.
+- **Caching the functions reduces repeated calls.** Written as `(SELECT app_current_role())`,
+  the call becomes an *InitPlan*: evaluated once per query, with its result reused for
+  every row. The recorded costs are close to the column (RF21: 1.24 ms against 1.60 ms;
+  RF20: 0.15 ms against 0.16 ms). The script's forgotten-filter check still sees one clinic.
 
 ## Decision
 
@@ -136,12 +138,12 @@ milliseconds on the largest query, and the measurements show how to remove it.
 
 | | Gained with RLS | Given up |
 | --- | --- | --- |
-| Safety | Isolation does not depend on every query being right; writes are checked too; no context means no rows | A role with `BYPASSRLS`, or a superuser connection, sees everything: the services never use one |
+| Safety | Isolation does not depend on every query being right; writes are checked too; no context means no rows | A role with `BYPASSRLS`, or a superuser connection, bypasses the policies; domain transactions must use the restricted role |
 | Performance | Same indexes and pages as the column | A per-row role check (up to ~3 ms on RF21 here), removable by caching the functions; plans that depend on the clinic are estimated less precisely without the filter in the query |
-| Operations | The rule is written once per table, in SQL, next to the data | The context has to be set in every transaction (`withTenantTx` does it, local to the transaction, so it is safe with a pool and PgBouncer in transaction mode); errors are less explicit (an empty result instead of a 403); tests have to run as `medicitas_app`, not as the owner |
+| Operations | The rule is written once per table, in SQL, next to the data | The context has to be set in every transaction (`withTenantTx` does it, local to the transaction, so it is safe with a pool and PgBouncer in transaction mode); errors are less explicit (an empty result instead of a 403); tests need a restricted role, not the owner |
 
-**Next step, not applied in this change:** rewrite the policies of the four `init.sql` with
-the cached form `(SELECT app_current_…())`. The script already proves it returns the same
-rows and removes the per-row cost; applying it means changing every policy and adding the
-upgrade scripts for existing databases, so it goes in its own change, with the full test
-suite as the check.
+A possible next step is to cache context functions in the policies of the four
+`init.sql` files with `(SELECT app_current_…())`. The script compares row counts and
+the forgotten-filter case, and the recorded measurements show reduced per-row cost.
+This optimization is not applied to the delivered schemas. It needs policy changes,
+upgrade scripts for existing databases and validation with the full test suite.

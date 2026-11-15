@@ -12,7 +12,8 @@ el aislamiento capa por capa, en [multitenancy.es.md](multitenancy.es.md).
 
 Las dos guardan todas las clínicas en las mismas tablas, separadas por una columna
 `clinic_id` (esquema compartido). Se diferencian en **quién hace cumplir** que una consulta
-solo toque su clínica.
+solo toque su clínica. La comparación siguiente cubre consultas por clínica en
+`appointments_db` y `logs_db`.
 
 | | Columna discriminadora | Row-Level Security |
 | --- | --- | --- |
@@ -21,11 +22,13 @@ solo toque su clínica.
 | Una consulta que olvida el filtro | Ve todas las clínicas | Ve solo su clínica |
 | Una escritura en otra clínica | Pasa | Se rechaza (`WITH CHECK`) |
 | Sin contexto | No aplica | No ve nada (falla cerrado) |
-| La salta | Cualquier error en cualquier consulta | Los superusuarios y los roles con `BYPASSRLS`, que los servicios nunca usan |
+| La salta | Cualquier error en cualquier consulta | Los superusuarios y los roles con `BYPASSRLS`; las transacciones de dominio usan roles de actor restringidos |
 
-MediCitas usa **las dos**: la columna está en todas las tablas, primera en cada llave
-primaria y en cada índice, y los servicios filtran por ella donde ayuda al plan; RLS es lo
-que garantiza I5. Este documento mide cuánto cuesta cada una y qué protege cada una.
+MediCitas usa `clinic_id` con RLS. La columna delimita las filas por clínica y encabeza
+la mayoría de las claves compuestas e índices de consulta; los servicios también la
+filtran donde ayuda al plan. Compose usa un login de desarrollo privilegiado, por lo
+que las transacciones de dominio cambian a roles de actor restringidos para aplicar RLS.
+Esta comparación mide aislamiento y costo de consulta.
 
 ## Cómo se comparó
 
@@ -34,7 +37,9 @@ TEST_DATABASE_URL=postgres://<usuario>:<clave>@localhost:55432/postgres \
 npm run measure:rls -w services/appointments-service
 ```
 
-`npm run test:all -- --no-e2e --keep` deja un PostgreSQL 18 corriendo en esa dirección.
+`npm run test:all -- --no-e2e --keep` deja un PostgreSQL 18 corriendo en esa dirección
+con el puerto de pruebas predeterminado. Use una instancia descartable: el script de
+medición necesita permisos para crear y borrar bases temporales y su rol de prueba.
 
 [`scripts/measure-rls.ts`](../services/appointments-service/scripts/measure-rls.ts) carga el
 mismo volumen que las mediciones de índices ([indexes.es.md](indexes.es.md)): **328 230
@@ -49,15 +54,14 @@ maneras, sobre los mismos datos:
 | **Ambas** | `medicitas_app`, con el contexto de sesión | Sí | Encendido (lo que hacen los servicios) |
 | **RLS, en caché** / **Ambas, en caché** | Igual que arriba, después de reescribir las políticas con `(SELECT app_current_role())` en vez de `app_current_role()` | | Encendido |
 
-Los tiempos son la mediana de 7 corridas en un contenedor de 2 vCPU con PostgreSQL 16
-(Compose usa 18; los planes son del mismo tipo). Los buffers son páginas de 8 KB: muestran el
+Los tiempos son la mediana de 7 corridas en un contenedor de 2 vCPU con PostgreSQL 16.
+Compose usa PostgreSQL 18. Los buffers son páginas de 8 KB: muestran el
 trabajo, y el tiempo su costo en esa máquina. El script también comprueba que todas las
-variantes devuelvan las mismas filas.
+variantes devuelvan la misma cantidad de filas.
 
-Ahora los servicios corren cada petición con el rol de base de su actor (`db_admin`,
-`db_receptionist`, `db_professional`; ver [database.es.md](database.es.md#roles-de-base-con-menor-privilegio)).
-Las políticas se aplican igual a todos los roles, así que los planes y costos medidos como
-`medicitas_app` son los mismos que obtienen.
+Estas mediciones usan `medicitas_app`. Los handlers de dominio actuales usan
+`db_admin`, `db_receptionist` o `db_professional` según el actor, con permisos SQL
+y RLS; vea los [roles de base](database.es.md#roles-de-base-con-menor-privilegio).
 
 ## Aislamiento
 
@@ -125,12 +129,11 @@ Las diferencias de menos de unos 0.05 ms son ruido en esta máquina.
   `app_current_clinic_id() = 'A'`, evaluado una vez por consulta. De paso es una comprobación
   de consistencia gratis: si el código y la sesión no coincidieran en la clínica, la consulta
   no devolvería nada.
-- **Guardar en caché las funciones elimina el costo.** Escrita como
+- **Guardar en caché las funciones reduce las llamadas repetidas.** Escrita como
   `(SELECT app_current_role())`, la llamada se vuelve un *InitPlan*: se evalúa una vez por
-  consulta y su resultado se reutiliza en cada fila. Con las políticas reescritas así, RLS
-  cuesta lo mismo que la columna (RF21: 1.24 ms contra 1.60 ms; RF20: 0.15 ms contra
-  0.16 ms) y conserva todas las garantías: las comprobaciones de aislamiento del script dan
-  el mismo resultado.
+  consulta y su resultado se reutiliza en cada fila. Los costos registrados se acercan
+  a los de la columna (RF21: 1.24 ms contra 1.60 ms; RF20: 0.15 ms contra 0.16 ms).
+  La comprobación del filtro olvidado del script sigue viendo una sola clínica.
 
 ## Decisión
 
@@ -143,12 +146,13 @@ eliminarla.
 
 | | Lo que se gana con RLS | Lo que se cede |
 | --- | --- | --- |
-| Seguridad | El aislamiento no depende de que todas las consultas estén bien; también se revisan las escrituras; sin contexto no hay filas | Un rol con `BYPASSRLS`, o una conexión de superusuario, ve todo: los servicios nunca usan uno |
+| Seguridad | El aislamiento no depende de que todas las consultas estén bien; también se revisan las escrituras; sin contexto no hay filas | Un rol con `BYPASSRLS`, o una conexión de superusuario, omite las políticas; las transacciones de dominio deben usar el rol restringido |
 | Rendimiento | Los mismos índices y páginas que con la columna | Una revisión del rol por fila (hasta ~3 ms en RF21 aquí), que se elimina guardando en caché las funciones; los planes que dependen de la clínica se estiman con menos precisión sin el filtro en la consulta |
-| Operación | La regla se escribe una vez por tabla, en SQL, junto a los datos | Hay que cargar el contexto en cada transacción (`withTenantTx` lo hace, local a la transacción, así que es seguro con un pool y con PgBouncer en modo transacción); los errores son menos explícitos (un resultado vacío en vez de un 403); las pruebas tienen que correr como `medicitas_app`, no como el dueño |
+| Operación | La regla se escribe una vez por tabla, en SQL, junto a los datos | Hay que cargar el contexto en cada transacción (`withTenantTx` lo hace, local a la transacción, así que es seguro con un pool y con PgBouncer en modo transacción); los errores son menos explícitos (un resultado vacío en vez de un 403); las pruebas necesitan un rol restringido, no el dueño |
 
-**Siguiente paso, no aplicado en este cambio:** reescribir las políticas de los cuatro
-`init.sql` con la forma en caché `(SELECT app_current_…())`. El script ya demuestra que
-devuelve las mismas filas y elimina el costo por fila; aplicarlo implica cambiar todas las
-políticas y agregar los scripts de actualización para las bases existentes, así que va en
-su propio cambio, con la suite completa de pruebas como verificación.
+Un siguiente paso posible es guardar en caché las funciones de contexto en las
+políticas de los cuatro `init.sql`, con `(SELECT app_current_…())`. El script compara
+cantidades de filas y el caso del filtro olvidado; las mediciones registradas muestran
+menor costo por fila. Esta optimización no está aplicada a los esquemas entregados.
+Requiere cambiar políticas, agregar upgrades para bases existentes y validar con
+la suite completa de pruebas.

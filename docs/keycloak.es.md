@@ -2,9 +2,9 @@
 
 [English](keycloak.md) · **Español**
 
-MediCitas usa **Keycloak 26** como proveedor centralizado de identidad y acceso (IAM), con una arquitectura de **un solo realm y mappers OIDC personalizados en el token**.
-
-Este documento describe cómo se integran la autenticación, el multi-tenancy y la autorización de dominio en los microservicios de MediCitas.
+MediCitas usa Keycloak 26.7.0 en Compose, con un realm y mappers OIDC de claims
+personalizados. El frontend del diagrama representa un cliente OIDC posible;
+este repositorio no implementa una aplicación frontend.
 
 ---
 
@@ -56,11 +56,13 @@ flowchart TD
 MediCitas es una plataforma SaaS que atiende a varias clínicas (tenants):
 - Cada clínica se identifica con un UUID `clinic_id`.
 - El aislamiento entre tenants se impone de forma estricta en PostgreSQL con **Row-Level Security (RLS)** mediante parámetros de sesión (`app.current_clinic_id`, `app.current_user_id`, `app.current_role`, `app.current_professional_id`).
-- Las conexiones de PostgreSQL cambian a roles de menor privilegio (`db_admin`, `db_receptionist`, `db_professional`, `medicitas_app`).
+- Las transacciones de dominio usan `MEDICITAS_DB_ROLES` para elegir el rol SQL
+  del actor; vea los [roles de base](database.es.md#roles-de-base-con-menor-privilegio).
+  Los relays usan `medicitas_relay` en el outbox fuente.
 
 ### ¿Por qué un solo realm con claims personalizados?
 1. **Rendimiento sin estado**: los microservicios verifican la firma del JWT por su cuenta, usando el endpoint público JWKS de Keycloak (`/realms/Sistema_Clinico/protocol/openid-connect/certs`). Verificar un token no requiere consultas a la base.
-2. **Uso eficiente de recursos**: Keycloak evita la degradación de rendimiento y el consumo de memoria que implica mantener cientos de realms individuales.
+2. **Administración**: un realm reúne roles, clientes y mappers en una configuración.
 3. **Administración de plataforma sencilla**: un `platform_admin` (con `clinic_id: null`) puede administrar clínicas de toda la plataforma sin necesitar una federación de confianza compleja entre realms.
 
 ---
@@ -80,6 +82,8 @@ Cuando se emite un access token, los protocol mappers de Keycloak inyectan estos
 | `realm_access.roles`| `string[]` | Arreglo de los roles de realm asignados en Keycloak. | Todos |
 
 ### Ejemplo de payload JWT decodificado (profesional)
+
+IDs ilustrativos y timestamps vencidos; no es un token utilizable.
 ```json
 {
   "exp": 1731369600,
@@ -106,15 +110,16 @@ La librería compartida `@medicitas/auth` provee middlewares y extractores de co
 
 ```typescript
 import { requireTenantContext, extractTenantContext } from '@medicitas/auth';
+import { withTenantTx, MEDICITAS_DB_ROLES } from '@medicitas/db';
 
 // 1. Como middleware de Express:
-app.use('/appointments', requireTenantContext, (req, res) => {
+app.use('/appointments', requireTenantContext, async (req, res) => {
   // res.locals.tenant está tipado como TenantContext
   const ctx = res.locals.tenant;
   // Se usa en transacciones de base de datos
   await withTenantTx(db, ctx, async (tx) => {
     // consultas aisladas a ctx.clinicId
-  });
+  }, { dbRoles: MEDICITAS_DB_ROLES });
 });
 
 // 2. O resolviendo el contexto desde req.user:
@@ -135,11 +140,12 @@ export interface TenantContext {
 
 ## 5. Configuración local y Docker Compose
 
-Keycloak ya viene configurado en `docker-compose.yml`:
+Prepare `.env` como indica el README raíz. Este subconjunto arranca identidad,
+su carga de usuarios y las bases; no arranca la aplicación ni Redis:
 
 ```bash
 # Levantar Keycloak y las bases
-docker compose up -d keycloak db_clinics db_users db_appointments db_logs
+docker compose up -d keycloak keycloak-seed db_clinics db_users db_appointments db_logs
 ```
 
 - **Consola de administración**: `http://localhost:8080`
@@ -161,7 +167,8 @@ KEYCLOAK_INTERNAL_URL=http://keycloak:8080
 KEYCLOAK_ISSUER=http://localhost:8080/realms/Sistema_Clinico
 KEYCLOAK_AUDIENCE=Medi_Citas
 KEYCLOAK_TEST_CLIENT_ID=integration-tests
-KEYCLOAK_TEST_PASSWORD=test_password
+KEYCLOAK_TEST_PASSWORD=replace-with-local-test-password
+KEYCLOAK_USER_ADMIN_SECRET=replace-with-local-client-secret
 ```
 
 ---
@@ -173,4 +180,16 @@ KEYCLOAK_TEST_PASSWORD=test_password
 npm test -w packages/auth
 ```
 
-La validación del token, la verificación de roles y la lectura de los claims del tenant están cubiertas por pruebas unitarias automatizadas que usan pares de llaves RS256 en memoria y un servidor JWKS simulado local.
+Estas unitarias ejercitan validación de tokens, roles y claims con llaves RS256 en
+memoria y un servidor JWKS simulado.
+
+La URL interna de JWKS debe ser alcanzable desde el servicio; el issuer debe
+coincidir con la URL que emitió el token. RF1/RF2 usan el cliente confidencial
+`medicitas-user-admin`, cuya cuenta de servicio tiene `manage-users`.
+La carga de usuarios usa Partial Import con `SKIP` por defecto, conservando usuarios
+y contraseñas existentes. Reiniciar no actualiza todas las cuentas existentes.
+
+Los servicios verifican JWT localmente tras obtener las llaves: la mayoría de las
+rutas no vuelve a comprobar rol/estado en `users_db`. Cerrar sesiones en Keycloak
+no hace que un JWT ya emitido falle la validación de firma y expiración. Tras cambiar
+un rol, obtenga tokens nuevos.
