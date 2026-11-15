@@ -48,6 +48,15 @@ administration-console token for domain calls.
 
 ## Demo data
 
+Import [MediCitas Demo](collections/medicitas-demo.postman_collection.json) as a
+collection. Send requests individually, in folder order; optional onboarding and
+administration folders create extra data and are not prerequisites for seeded
+appointment calls. Run folder 90 cleanup last. Do not run the whole collection
+unattended. Stop on an unexpected response or unresolved/empty variable.
+Response scripts check the expected status and capture created UUIDs only after
+success; a failed creation clears its output variables. Set them manually only
+from a confirmed response. Never resend a booking to recover a lost ID.
+
 Use disposable local data. Choose unique clinic identifiers, usernames, service
 names and patient identifications before creating resources. Set `initialPassword`
 locally (12-256 characters); it is used for provisioning, never stored in the template.

@@ -1,0 +1,909 @@
+{
+  "info": {
+    "name": "MediCitas - Demo",
+    "description": "Direct-service demo requests. Import the safe environment and follow postman/README.md (English) or README.es.md. Send one request at a time; stop on unexpected status or unresolved variables. Optional administration changes disposable data. Assertions describe expected results; this file is not evidence of a full-stack execution. No login endpoint or real secrets.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 - Health",
+      "description": "Run first. Direct URLs need the local Compose port override.",
+      "item": [
+        {
+          "name": "Gateway root",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/",
+            "description": "Public. Expected 200 text Hello World!; no forwarding.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Public root\", () => pm.expect(pm.response.text()).to.eql(\"Hello World!\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Gateway health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/health",
+            "description": "Public liveness only; does not check dependencies.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Alive\", () => pm.expect(pm.response.json().status).to.eql(\"ok\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Clinics health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{clinicsUrl}}/health",
+            "description": "Public liveness only; does not check dependencies.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Alive\", () => pm.expect(pm.response.json().status).to.eql(\"ok\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Users health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{usersUrl}}/health",
+            "description": "Public liveness only; does not check dependencies.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Alive\", () => pm.expect(pm.response.json().status).to.eql(\"ok\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Appointments health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentsUrl}}/health",
+            "description": "Public liveness only; does not check dependencies.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Alive\", () => pm.expect(pm.response.json().status).to.eql(\"ok\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Audit health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{auditUrl}}/health",
+            "description": "Public liveness only; does not check dependencies.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Alive\", () => pm.expect(pm.response.json().status).to.eql(\"ok\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "01 - Clinic onboarding (optional)",
+      "description": "Creates a separate clinic. Does not change Clinic 1 tokens or seeded variables. Use a unique identifier and username; initialPassword is local only.",
+      "item": [
+        {
+          "name": "RF1 - Create clinic and first administrator",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{clinicsUrl}}/clinics",
+            "description": "Platform administrator only. Requires running users/Keycloak Admin API. Captures demoClinicId and bootstrapAdminId. 409 on duplicate active clinic; see contract for pending-bootstrap recovery.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{platformAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{clinicName}}\",\n  \"identifier\": \"{{clinicIdentifier}}\",\n  \"timeZone\": \"{{clinicTimeZone}}\",\n  \"administrator\": {\n    \"username\": \"{{bootstrapUsername}}\",\n    \"initialPassword\": \"{{initialPassword}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  pm.test(\"clinicId is a UUID\", () => pm.expect(data.clinicId).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));",
+                  "  if (typeof data.clinicId === \"string\" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.clinicId)) pm.environment.set(\"demoClinicId\", data.clinicId);",
+                  "  else pm.environment.unset(\"demoClinicId\");",
+                  "  pm.test(\"appUserId is a UUID\", () => pm.expect(data.appUserId).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));",
+                  "  if (typeof data.appUserId === \"string\" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.appUserId)) pm.environment.set(\"bootstrapAdminId\", data.appUserId);",
+                  "  else pm.environment.unset(\"bootstrapAdminId\");",
+                  "} else {",
+                  "  pm.environment.unset(\"demoClinicId\");",
+                  "  pm.environment.unset(\"bootstrapAdminId\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Read Clinic 1 time zone",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{clinicsUrl}}/clinic/time-zone",
+            "description": "Uses the clinic in admin.sj token; not demoClinicId.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02 - Catalog",
+      "description": "Read seeded catalog, then optionally create/update a separate demo service. Never retire the seeded booking service.",
+      "item": [
+        {
+          "name": "RF4 - List specialties",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{clinicsUrl}}/specialties",
+            "description": "Global reference catalog; clinic administrator only.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF3 - List active services",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{clinicsUrl}}/services",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF3 - Read seeded booking service",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{clinicsUrl}}/services/{{serviceId}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF3 - Create demo service",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{clinicsUrl}}/services",
+            "description": "Use unique serviceName. Captures demoServiceId, leaving seeded serviceId unchanged.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{serviceName}}\",\n  \"durationMinutes\": 30,\n  \"specialtyId\": \"{{specialtyId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  pm.test(\"serviceId is a UUID\", () => pm.expect(data.serviceId).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));",
+                  "  if (typeof data.serviceId === \"string\" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.serviceId)) pm.environment.set(\"demoServiceId\", data.serviceId);",
+                  "  else pm.environment.unset(\"demoServiceId\");",
+                  "} else {",
+                  "  pm.environment.unset(\"demoServiceId\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF3 - Update demo service",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{clinicsUrl}}/services/{{demoServiceId}}",
+            "description": "Requires the preceding creation; replacement fields are all required.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{serviceName}}\",\n  \"durationMinutes\": 45,\n  \"specialtyId\": \"{{specialtyId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03 - Users and professionals (optional)",
+      "description": "Use admin.sj token. Create a disposable professional user, then register its profile. Do not run role/deactivation cleanup until finished.",
+      "item": [
+        {
+          "name": "RF2 - Create demo professional user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{usersUrl}}/users",
+            "description": "Choose unique managedUsername. Captures managedUserId. After activation_unconfirmed use Location recovery described in API; do not repeat creation blindly.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{managedUsername}}\",\n  \"initialPassword\": \"{{initialPassword}}\",\n  \"role\": \"professional\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  pm.test(\"appUserId is a UUID\", () => pm.expect(data.appUserId).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));",
+                  "  if (typeof data.appUserId === \"string\" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.appUserId)) pm.environment.set(\"managedUserId\", data.appUserId);",
+                  "  else pm.environment.unset(\"managedUserId\");",
+                  "} else {",
+                  "  pm.environment.unset(\"managedUserId\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF4 - Register demo professional",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{usersUrl}}/professionals",
+            "description": "Requires new active professional user. Fresh registration: 201; a claim-repair retry can return 200 (see contract). Captures demoProfessionalId. Obtain a fresh token before acting as that new professional.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"appUserId\": \"{{managedUserId}}\",\n  \"fullName\": \"J5 Demo Professional\",\n  \"specialtyIds\": [\n    \"{{specialtyId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  pm.test(\"professionalId is a UUID\", () => pm.expect(data.professionalId).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));",
+                  "  if (typeof data.professionalId === \"string\" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.professionalId)) pm.environment.set(\"demoProfessionalId\", data.professionalId);",
+                  "  else pm.environment.unset(\"demoProfessionalId\");",
+                  "} else {",
+                  "  pm.environment.unset(\"demoProfessionalId\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF4 - Read demo professional",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{usersUrl}}/professionals/{{demoProfessionalId}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF4 - Read seeded professional",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{usersUrl}}/professionals/{{professionalId}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04 - Patients",
+      "description": "Membership read exposes only patientId. Writes below use a new synthetic patient; they queue audit events but do not deliver them to logs_db yet.",
+      "item": [
+        {
+          "name": "RF14 - Read seeded patient membership",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{usersUrl}}/patients/{{patientId}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF14 - Create demo patient",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{usersUrl}}/patients",
+            "description": "Use unique patientIdentification. Captures demoPatientId, leaving seeded patientId unchanged.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identification\": \"{{patientIdentification}}\",\n  \"fullName\": \"J5 Demo Patient\",\n  \"birthDate\": \"1990-01-01\",\n  \"phone\": null,\n  \"email\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  pm.test(\"patientId is a UUID\", () => pm.expect(data.patientId).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));",
+                  "  if (typeof data.patientId === \"string\" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.patientId)) pm.environment.set(\"demoPatientId\", data.patientId);",
+                  "  else pm.environment.unset(\"demoPatientId\");",
+                  "} else {",
+                  "  pm.environment.unset(\"demoPatientId\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF14 - Update demo patient",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{usersUrl}}/patients/{{demoPatientId}}",
+            "description": "Requires new demo patient. Null clears contact; omitted fields stay unchanged.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"J5 Demo Patient Updated\",\n  \"email\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF14 - Read demo patient membership",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{usersUrl}}/patients/{{demoPatientId}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{receptionistToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "90 - Administration cleanup (optional, run last)",
+      "description": "Only resources created by this collection. Role change invalidates the demo user sessions; seeded admin.sj is the caller. Logical retirement/deactivation, not deletion of history.",
+      "item": [
+        {
+          "name": "RF3 - Retire demo service",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{clinicsUrl}}/services/{{demoServiceId}}",
+            "description": "Only demoServiceId, never seeded serviceId.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF2 - Change demo user role",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{usersUrl}}/users/{{managedUserId}}/role",
+            "description": "Only managedUserId from creation. Requires an active demo user.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"receptionist\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "RF2 - Deactivate demo user",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{usersUrl}}/users/{{managedUserId}}",
+            "description": "Only managedUserId. Logical deactivation. Do not target seeded actors.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clinicAdminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    }
+  ]
+}

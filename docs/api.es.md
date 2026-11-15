@@ -490,6 +490,9 @@ Un 503 no garantiza que reintentar un POST sea seguro sin idempotencia.
 
 ## Colección para la demo
 
+Importe la [colección Postman](../postman/collections/medicitas-demo.postman_collection.json)
+y siga sus [instrucciones de entorno/tokens locales](../postman/README.es.md).
+
 El [recorrido REST Client](../requests/demo.http) y su
 [ejemplo de entorno](../requests/.env.example) versionados usan URL directas y
 variables locales de tokens. Las respuestas son esperadas, no evidencia de la pila

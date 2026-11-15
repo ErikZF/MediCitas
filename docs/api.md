@@ -480,6 +480,9 @@ A 503 does not promise safe POST retries without idempotency.
 
 ## Demo collection
 
+Import the [Postman collection](../postman/collections/medicitas-demo.postman_collection.json)
+and follow its [local environment/token instructions](../postman/README.md).
+
 The versioned [REST Client walkthrough](../requests/demo.http) and its
 [environment example](../requests/.env.example) use direct service URLs and local
 token variables. Its responses are expectations, not full-stack evidence. Use

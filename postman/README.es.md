@@ -48,6 +48,15 @@ de la consola de administración de Keycloak para llamadas de dominio.
 
 ## Datos para la demo
 
+Importe [MediCitas Demo](collections/medicitas-demo.postman_collection.json) como
+colección. Envíe peticiones individuales en orden de carpetas; las opcionales de
+alta/administración crean datos extra y no son prerrequisitos de las citas semilla.
+Ejecute la limpieza de carpeta 90 al final. No ejecute toda la colección sin atender.
+Deténgase ante respuesta inesperada o variable vacía/sin resolver. Los scripts
+comprueban estado esperado y capturan UUID nuevos solo ante éxito; una creación
+fallida limpia sus variables de salida. Asígnelas manualmente solo desde una
+respuesta confirmada. No repita una reserva para recuperar un ID perdido.
+
 Use datos locales descartables. Elija identificadores de clínica, usernames, nombres
 de servicio e identificaciones de paciente únicos antes de crear recursos. Defina
 `initialPassword` localmente (12-256 caracteres); se usa para el alta y no se guarda
