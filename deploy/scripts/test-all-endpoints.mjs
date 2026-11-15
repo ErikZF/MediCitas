@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // Comprehensive end-to-end verification of every MediCitas endpoint through the
-// Kubernetes Edge Gateway (http://localhost:3000) and Keycloak (http://localhost:8080).
+// Edge Gateway (http://localhost:3000) and Keycloak (http://localhost:8080).
+// E2E_RUNTIME selects where the stack runs: 'k8s' (default, kubectl) or 'compose'
+// (docker compose, used by `npm run test:all`).
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const GATEWAY_URL = (process.env.GATEWAY_URL || 'http://localhost:3000').replace(/\/+$/, '');
@@ -12,6 +15,14 @@ const KEYCLOAK_URL = (process.env.KEYCLOAK_URL || 'http://localhost:8080').repla
 const REALM = process.env.REALM_NAME || 'Sistema_Clinico';
 const TEST_CLIENT_ID = process.env.KEYCLOAK_TEST_CLIENT_ID || 'integration-tests';
 const NAMESPACE = process.env.KUBE_NAMESPACE || 'medicitas';
+const RUNTIME = process.env.E2E_RUNTIME || 'k8s';
+const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+
+// Runs a command inside one container of the Compose stack.
+function composeExec(service, args, env = {}) {
+  const envArgs = Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
+  return execFileSync('docker', ['compose', 'exec', '-T', ...envArgs, service, ...args], { encoding: 'utf8', cwd: REPO_ROOT });
+}
 
 function loadSecretsPassword() {
   if (process.env.KEYCLOAK_TEST_PASSWORD) return process.env.KEYCLOAK_TEST_PASSWORD;
@@ -117,26 +128,24 @@ async function main() {
   });
 
   await step('Internal ClusterIP /health on all 4 microservices', async () => {
-    const pod = execFileSync(
-      'kubectl',
-      ['get', 'pod', '-n', NAMESPACE, '-l', 'app.kubernetes.io/name=edge-gateway', '-o', 'jsonpath={.items[0].metadata.name}'],
-      { encoding: 'utf8' },
-    ).trim();
-    const out = execFileSync(
-      'kubectl',
-      [
-        'exec', '-n', NAMESPACE, pod, '--',
-        'node', '-e',
-        `Promise.all([
+    const probe = `Promise.all([
           'http://clinics-service:3000/health',
           'http://users-service:3000/health',
           'http://appointments-service:3000/health',
           'http://audit-service:3000/health'
         ].map(u => fetch(u).then(async r => ({ status: r.status, body: await r.json() }))))
-        .then(r => console.log(JSON.stringify(r)))`,
-      ],
-      { encoding: 'utf8' },
-    );
+        .then(r => console.log(JSON.stringify(r)))`;
+    let out;
+    if (RUNTIME === 'compose') {
+      out = composeExec('edge-gateway', ['node', '-e', probe]);
+    } else {
+      const pod = execFileSync(
+        'kubectl',
+        ['get', 'pod', '-n', NAMESPACE, '-l', 'app.kubernetes.io/name=edge-gateway', '-o', 'jsonpath={.items[0].metadata.name}'],
+        { encoding: 'utf8' },
+      ).trim();
+      out = execFileSync('kubectl', ['exec', '-n', NAMESPACE, pod, '--', 'node', '-e', probe], { encoding: 'utf8' });
+    }
     const results = JSON.parse(out);
     assert.equal(results.length, 4);
     for (const r of results) {
@@ -382,11 +391,15 @@ async function main() {
     );
     assert.ok(rf7.body.slots.length >= 2);
 
-    const redisKeys = execFileSync(
-      'kubectl',
-      ['exec', '-n', NAMESPACE, 'redis-0', '--', 'sh', '-c', 'redis-cli -p "$REDIS_PORT" keys "avail:*"'],
-      { encoding: 'utf8' },
-    ).trim().split('\n').filter(Boolean);
+    const redisOut = RUNTIME === 'compose'
+      ? composeExec('redis', ['redis-cli', '-p', process.env.REDIS_PORT || '6379', '--scan', '--pattern', 'avail:*'],
+        { REDISCLI_AUTH: process.env.REDIS_PASSWORD || '' })
+      : execFileSync(
+        'kubectl',
+        ['exec', '-n', NAMESPACE, 'redis-0', '--', 'sh', '-c', 'redis-cli -p "$REDIS_PORT" keys "avail:*"'],
+        { encoding: 'utf8' },
+      );
+    const redisKeys = redisOut.trim().split('\n').filter((key) => key.startsWith('avail:'));
     assert.ok(redisKeys.length > 0, 'Expected Redis to cache availability keys');
 
     return {
@@ -486,34 +499,52 @@ async function main() {
   });
 
   // 07 - Started appointment outcome & clinical note (RF12 & RF15)
+  // An outcome needs an appointment that already started, and the API cannot book in the
+  // past, so it comes from the seed: 804 on the first run, then any other started booking
+  // of dr.mora (the seed leaves some, and more every day as the calendar moves on).
+  const started = await step('Find a started booking of dr.mora (seed)', async () => {
+    const seeded = await http('GET', `/appointments/${SEED.startedAppointmentId}`, { token: tokens.professional });
+    if (seeded.status === 200 && seeded.body.status === 'booked') return seeded.body;
+    for (let back = 0; back <= 45; back += 1) {
+      const date = addDaysUtc(-back);
+      const agenda = await http('GET', `/agenda/professionals/${SEED.professionalId}?date=${date}`, {
+        token: tokens.professional,
+        expectedStatus: 200,
+      });
+      const found = agenda.body.appointments.find((a) => a.status === 'booked' && Date.parse(a.startsAt) <= Date.now());
+      if (found) return found;
+    }
+    throw new Error('No started booking of dr.mora is left in the last 45 days: reload the seed (docker compose down -v && docker compose up -d).');
+  });
+
   await step('POST /appointments/:id/outcome (RF12) & POST/GET/PUT /note (RF15)', async () => {
-    const before = await http('GET', `/appointments/${SEED.startedAppointmentId}`, {
+    const before = await http('GET', `/appointments/${started.appointmentId}`, {
       token: tokens.professional,
       expectedStatus: 200,
     });
     assert.equal(before.body.status, 'booked');
 
-    const attended = await http('POST', `/appointments/${SEED.startedAppointmentId}/outcome`, {
+    const attended = await http('POST', `/appointments/${started.appointmentId}/outcome`, {
       token: tokens.professional,
       body: { outcome: 'attended' },
       expectedStatus: 200,
     });
     assert.equal(attended.body.status, 'attended');
 
-    const noteCreated = await http('POST', `/appointments/${SEED.startedAppointmentId}/note`, {
+    const noteCreated = await http('POST', `/appointments/${started.appointmentId}/note`, {
       token: tokens.professional,
       body: { content: `K8s E2E clinical note ${SUFFIX}` },
       expectedStatus: 201,
     });
-    assert.equal(noteCreated.body.appointmentId, SEED.startedAppointmentId);
+    assert.equal(noteCreated.body.appointmentId, started.appointmentId);
 
-    const noteRead = await http('GET', `/appointments/${SEED.startedAppointmentId}/note`, {
+    const noteRead = await http('GET', `/appointments/${started.appointmentId}/note`, {
       token: tokens.professional,
       expectedStatus: 200,
     });
     assert.equal(noteRead.body.clinicalNoteId, noteCreated.body.clinicalNoteId);
 
-    const noteUpdated = await http('PUT', `/appointments/${SEED.startedAppointmentId}/note`, {
+    const noteUpdated = await http('PUT', `/appointments/${started.appointmentId}/note`, {
       token: tokens.professional,
       body: { content: `K8s E2E clinical note updated ${SUFFIX}` },
       expectedStatus: 200,
@@ -521,7 +552,7 @@ async function main() {
     assert.ok(noteUpdated.body.content.includes('updated'));
 
     // Receptionist cannot read clinical notes
-    await http('GET', `/appointments/${SEED.startedAppointmentId}/note`, {
+    await http('GET', `/appointments/${started.appointmentId}/note`, {
       token: tokens.receptionist,
       expectedStatus: 403,
     });
@@ -580,7 +611,7 @@ async function main() {
 
       const nLogs = await http(
         'GET',
-        `/audit/logs?userId=${SEED.professionalAppUserId}&patientId=${SEED.patientId}&from=${encodeURIComponent(recentFrom)}&to=${encodeURIComponent(recentTo)}`,
+        `/audit/logs?userId=${SEED.professionalAppUserId}&patientId=${started.patientId}&from=${encodeURIComponent(recentFrom)}&to=${encodeURIComponent(recentTo)}`,
         { token: tokens.clinicAdmin, expectedStatus: 200 },
       );
       noteEvents = nLogs.body;

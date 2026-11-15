@@ -29,11 +29,13 @@ flowchart TD
             PG["postgres:18-alpine\n(healthcheck activo)"]
         end
         
-        IntegTest["Job: DB Integration & Concurrency\n(TEST_DATABASE_URL)\n- Verificación de políticas RLS\n- Ciclo de vida y disponibilidad de citas\n- Concurrencia y carreras críticas (I1, I2, I5)"]
+        IntegTest["Job: DB Integration & Concurrency\n(npm run test:all -- --external --no-e2e)\n- todas las suites de los workspaces\n- RLS, ciclo de vida, caché, bitácora\n- carreras (I1, I2, I3)"]
+        E2E["Job: End-to-end contra Docker Compose\n(cp .env.example .env; npm run test:e2e)"]
         DockerBuild["Job: Docker Build Validation\nMatriz: 5 microservicios\n(edge-gateway, clinics, users, appointments, audit)"]
 
         Quality --> UnitTest
         UnitTest --> IntegTest
+        Quality --> E2E
         IntegTest --> DockerBuild
     end
 
@@ -71,18 +73,16 @@ El archivo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) se ejecuta 
    - Inyecta `TEST_DATABASE_URL: postgres://test:test_password@localhost:5432/postgres`.
    - Carga los cuatro esquemas y la semilla de demo en sus propias bases, igual que `docker compose up`, para que una semilla que rompe una restricción falle aquí.
    - Levanta también **Redis 7** (`redis:7-alpine`) e inyecta `TEST_REDIS_URL: redis://localhost:6379` para las pruebas de la caché de disponibilidad (E8, I8). Sin esa variable, esas pruebas se saltan.
-   - Los tests crean dinámicamente una base de datos desechable (`medicitas_<label>_<pid>`), aplican el esquema real [`database/appointments/init.sql`](../database/appointments/init.sql) con extensiones (`btree_gist`), restricciones de exclusión y políticas RLS.
-   - Ejecuta solo `npm run test:integration -w packages/db` y
-     `npm test -w services/appointments-service`. Valida:
-     - Transacciones multi-inquilino (`withTenantTx`) con el rol de menor privilegio `medicitas_app`.
-     - Políticas de seguridad a nivel de fila (RLS).
-     - Agendamiento y ciclo de vida de citas (RF5, RF6, RF7, RF8, RF9, RF10-RF13, RF21).
-     - Carreras por el último espacio y por paciente (I1, I2); I5 tiene pruebas de aislamiento separadas.
-   - No ejecuta las suites de base de clinics/users/audit ni login contra Keycloak real.
-     Cargar sus esquemas y semillas no equivale a ejercitar esas API.
-   - Destruye la base de datos temporal al finalizar.
+   - Corre `npm run test:all -- --external --no-e2e`: el mismo comando que en local, con estos contenedores de servicio en vez de `docker-compose.test.yml`. Compila todo y corre las suites de los ocho workspaces (unitarias, de integración y de carrera), no solo las de appointments.
+   - Cada suite crea bases desechables al vuelo, les aplica el `init.sql` real de su base, con sus extensiones (`btree_gist`), restricciones de exclusión, triggers, roles y políticas RLS, y las borra al final.
+   - Qué cubre cada prueba: [test-report.es.md](test-report.es.md).
 
-4. **`docker-build` (Validación de imágenes de Docker)**:
+4. **`e2e-compose` (punta a punta contra Docker Compose)**:
+   - Hace lo que haría el evaluador con un clon nuevo: `cp .env.example .env` y luego `npm run test:e2e`.
+   - El comando corre `docker compose up -d --build`, espera a que el gateway responda y Keycloak tenga los usuarios de demo, y corre los 25 pasos de [`deploy/scripts/test-all-endpoints.mjs`](../deploy/scripts/test-all-endpoints.mjs) a través del gateway con tokens reales de Keycloak.
+   - Si falla, el job imprime `docker compose ps -a` y las últimas líneas del log de cada contenedor.
+
+5. **`docker-build` (Validación de imágenes de Docker)**:
    - Utiliza una matriz para construir en paralelo las imágenes de los 5 microservicios usando [`services/Dockerfile`](../services/Dockerfile):
      - `edge-gateway`
      - `clinics-service`
@@ -91,7 +91,7 @@ El archivo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) se ejecuta 
      - `audit-service`
    - Comprueba builds con `push: false`; no publica imágenes ni arranca Compose.
 
-`unit-tests`, `integration-tests` y `docker-build` dependen de `quality` y luego
+`unit-tests`, `integration-tests`, `e2e-compose` y `docker-build` dependen de `quality` y luego
 corren de forma independiente. Un push a `docs/**` no dispara este workflow;
 un pull request hacia `main` sí. Un job exitoso no acredita la pila completa.
 
@@ -110,8 +110,10 @@ npm test
 ```
 
 `npm test` ejecuta los workspaces. Si falta infraestructura, puede terminar bien
-con pruebas omitidas; revise el resumen. No hay un comando que prepare todas las
-dependencias y ejecute todas las integraciones con la pila real.
+con pruebas omitidas; revise el resumen. `npm run test:all` ahora levanta su pila
+PostgreSQL/Redis de pruebas, compila/ejecuta todos los workspaces y luego el E2E de
+Compose. Vea [opciones y efectos del runner](test-report.es.md). No prepara el
+realm optativo `j2`; puede terminar con código cero y esas pruebas omitidas.
 
 | Configuración | Habilita | Requisitos |
 | --- | --- | --- |
@@ -126,12 +128,11 @@ Las pruebas de Keycloak exigen `KEYCLOAK_INTERNAL_URL` en `127.0.0.1`,
 El realm de demo `Sistema_Clinico` no satisface esa fixture. Mantenga desactivada
 la opción hasta prepararla; no la ejecute contra identidades compartidas.
 
-Para el subconjunto de base/caché de CI, defina localmente las dos URL de pruebas
-y ejecute:
+Para reproducir el job de workspaces de CI con una instancia descartable preparada,
+defina localmente las dos URL de pruebas y ejecute:
 
 ```bash
-npm run test:integration -w packages/db
-npm test -w services/appointments-service
+npm run test:all -- --external --no-e2e
 ```
 
 Sintaxis Bash (reemplace placeholders con credenciales de pruebas descartables):
@@ -157,27 +158,21 @@ No reinicie datos compartidos.
 
 ## 4. Cobertura y verificaciones observadas
 
-| Requisitos | Evidencia existente | Límites |
-| --- | --- | --- |
-| RF1-RF4 | Suites de clinics/users y pruebas optativas de alta | Keycloak real requiere preparar su fixture aparte |
-| RF5-RF8 | Suites de horarios, disponibilidad, caché y relay de agenda | Dependencias inyectadas; límites ante fallos/réplicas en [cache.es.md](cache.es.md) |
-| RF9-RF13; I1, I2, I7 | Suites de reserva, ciclo de vida y carrera | Handlers HTTP y PostgreSQL con identidad/catálogo inyectados |
-| I3, I4 | Carrera bloqueo/reserva y reglas de horarios/reserva | Cambios posteriores pueden dejar conflictos; la duración viene de un catálogo separado |
-| RF14-RF16; RF18-RF19; I6 | Suites de pacientes, nota, historial, consulta y relay de auditoría | No hay GET de perfil/contacto; se auditan lecturas/escrituras de notas y escrituras de contacto |
-| RF17; I5 | Unitarias de auth, tenant-tx y aislamiento por servicio | Varias usan JWKS simulado/contexto inyectado; no acreditan toda ruta sobre Compose |
-| RF20-RF21 | Suites de agenda diaria y conteos | Separadas del recorrido con la pila completa |
-| I8 | Suites de caché y relay de agenda | Escenarios normales de invalidación; sin garantía absoluta ante fallos/múltiples réplicas |
+La cobertura por requisito e invariante está en [test-report.es.md](test-report.es.md).
+Distingue las aserciones de las pruebas, las corridas observadas y los límites.
 
-Revisión documental del 2026-11-15 sobre `origin/main` en `05c61cd`:
+Revisión documental del 2026-11-15, actualizada a `origin/main` en `5759576`:
 
 - `npm ci --ignore-scripts --no-audit --no-fund`: completado con Node.js 24.14.1 y npm 11.11.0.
 - `npm run build` y `npm run typecheck`: pasaron.
 - `kubectl kustomize deploy/k8s/overlays/local`: renderizó sin aplicar al clúster.
 - Análisis de sintaxis Bash/PowerShell y `node --check deploy/scripts/test-all-endpoints.mjs`: pasaron; no se ejecutaron los scripts.
-- `npm test`: 345 aprobadas, 133 omitidas; sin URL de DB/Redis de prueba ni realm temporal configurados.
+- `npm test`: 345 aprobadas, 141 omitidas; sin URL de DB/Redis de prueba ni realm temporal configurados.
 - `npm run seed:check` y `docker compose --env-file .env.example config --quiet`: pasaron.
 - Docker no estaba disponible: no se ejecutaron arranque Compose, integraciones reales
   con PostgreSQL/Redis/Keycloak, carrera contra la base, mediciones ni recorrido de despliegue.
+  El runner nuevo se revisó estáticamente: no se ejecutó su limpieza de contenedores/
+  volúmenes ni la etapa 2 que modifica datos de demo.
 
 La entrega de Etapa 1 también pide diccionario de datos, justificación paso a paso
 de 3FN, video de demostración y declaración de uso de IA. El Markdown revisado

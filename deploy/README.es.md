@@ -179,22 +179,24 @@ Valida:
 - RBAC y enrutamiento entre microservicios (`/audit/logs` `200`/`403`, `/services/:id`, `/professionals/:id` y `/availability`)
 - Claves `avail:*` en la caché de Redis
 
-### 2. Recorrido de API (24 pasos)
+### 2. Recorrido de API (25 pasos)
 
 ```bash
 node deploy/scripts/test-all-endpoints.mjs
 ```
 
-El script tiene 24 pasos por el gateway y usa `kubectl exec` para salud interna
-y caché; necesita contexto Kubernetes y namespace, además de una URL de API.
+El script tiene 25 pasos por el gateway. Su modo Kubernetes predeterminado usa
+`kubectl exec` para salud interna y caché, y requiere contexto y namespace. El
+modo Compose usa `docker compose exec`.
 Obtiene tokens semilla y ejercita altas de clínica, usuario y profesional,
 registro/actualización de pacientes, servicios, horarios, disponibilidad, reserva,
 conflicto/validación, reprogramación/cancelación, desenlace/notas, consultas y
 entrega de auditoría. Los catálogos requieren autenticación. No hay CRUD completo
 para toda entidad.
 
-Cambia la cita semilla 804 a atendida y crea una nota, así que no se puede repetir
-sobre los mismos datos sin preparación. Reserva/cancelación y desenlace usan
+Consume una reserva ya iniciada de dr.mora (804 primero; si no, busca una en los
+últimos 45 días), registra su desenlace y crea una nota. Repetirlo requiere
+reservas semilla elegibles; no se puede ejecutar indefinidamente. Reserva/cancelación y desenlace usan
 citas distintas. No sustituye la carrera simultánea automatizada ni acredita
 todas las rutas/invariantes. Su existencia no registra una ejecución exitosa.
 Valores predeterminados: gateway 3000, Keycloak 8080, realm `Sistema_Clinico`,
@@ -204,6 +206,9 @@ toma del entorno o del archivo de secretos del overlay.
 > [!NOTE]
 > `test-all-endpoints.mjs` crea usuarios, servicios, horarios y citas. Recrear el
 > clúster descarta sus datos; no use el script para reiniciar un clúster compartido.
+
+El mismo script corre contra Docker Compose con `E2E_RUNTIME=compose` (usa entonces
+`docker compose exec` en vez de `kubectl exec`); `npm run test:e2e` lo hace por usted.
 
 ## Eliminación del clúster
 

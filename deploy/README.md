@@ -179,21 +179,22 @@ Checks:
 - RBAC and routing across microservices (`/audit/logs` `200`/`403`, `/services/:id`, `/professionals/:id`, and `/availability`)
 - Redis `avail:*` availability cache keys
 
-### 2. API walkthrough (24 steps)
+### 2. API walkthrough (25 steps)
 
 ```bash
 node deploy/scripts/test-all-endpoints.mjs
 ```
 
-The script has 24 steps through the gateway and uses `kubectl exec` for internal
-health/cache checks; it requires the Kubernetes context and namespace, not just
-an API URL. It requests seeded Keycloak tokens and exercises onboarding, user and
+The script has 25 steps through the gateway. Its default Kubernetes mode uses
+`kubectl exec` for internal health/cache checks and requires a cluster context
+and namespace. Compose mode uses `docker compose exec` instead. It requests seeded Keycloak tokens and exercises onboarding, user and
 professional creation, patient registration/update, services, schedules, availability,
 booking/conflict/validation, reschedule/cancel, outcome/notes, queries and audit delivery.
 Catalog routes require authentication. There is no full CRUD API for every entity.
 
-It changes seed appointment 804 to attended and creates a note, so it is not
-repeatable on an unchanged dataset. Booking/cancellation and outcome use different
+It consumes a started booking of dr.mora (804 first, otherwise one found in the
+last 45 days), records its outcome and creates a note. Repeated runs require
+remaining eligible seed bookings; they are not indefinitely repeatable. Booking/cancellation and outcome use different
 appointments. It is not the automated simultaneous last-slot race or proof of all
 routes/invariants. Its presence is not a successful run record. Defaults: gateway
 3000, Keycloak 8080, realm `Sistema_Clinico`, client `integration-tests`, namespace
@@ -202,6 +203,9 @@ routes/invariants. Its presence is not a successful run record. Defaults: gatewa
 > [!NOTE]
 > `test-all-endpoints.mjs` creates users, services, schedules and appointments.
 > Recreating the cluster discards its data; do not use the deploy script to reset a shared cluster.
+
+The same script runs against Docker Compose with `E2E_RUNTIME=compose` (it then uses
+`docker compose exec` instead of `kubectl exec`); `npm run test:e2e` does that for you.
 
 ## Teardown
 

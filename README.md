@@ -34,7 +34,8 @@ It is an npm workspace: a single `npm install` at the root installs everything.
 npm install
 npm run build        # shared packages, then services
 npm run typecheck
-npm test
+npm test             # unit tests; integration tests skip without a database
+npm run test:all     # workspace suites and Compose E2E (needs Docker; see limits)
 npm run dev -w services/edge-gateway
 ```
 
@@ -121,6 +122,19 @@ is absent. See [test requirements and CI coverage](docs/ci-cd.md). The routes ar
 wired at normal startup; this guide does not establish a successful full-stack
 demo. [Postman](postman/README.md) describes the steps and their prerequisites.
 
+## Tests
+
+```bash
+npm run test:all
+```
+
+The runner starts disposable PostgreSQL 18 and Redis for workspace suites, then
+runs the Compose end-to-end walkthrough. Prepare `.env` as above and install npm
+dependencies first. Stage 2 rebuilds and changes the demo stack; it preserves
+existing database volumes. The temporary-realm Keycloak tests still need separate
+configuration and can skip. Default stage-1 cleanup removes its test containers
+and volumes. Options, recorded results and limits: [test report](docs/test-report.md).
+
 ## Documentation
 
 | Topic | English | Español |
@@ -135,6 +149,7 @@ demo. [Postman](postman/README.md) describes the steps and their prerequisites.
 | Concurrency: the last slot | [docs/concurrency.md](docs/concurrency.md) | [docs/concurrency.es.md](docs/concurrency.es.md) |
 | Availability cache | [docs/cache.md](docs/cache.md) | [docs/cache.es.md](docs/cache.es.md) |
 | Indexes and their plans | [docs/indexes.md](docs/indexes.md) | [docs/indexes.es.md](docs/indexes.es.md) |
+| Test report | [docs/test-report.md](docs/test-report.md) | [docs/test-report.es.md](docs/test-report.es.md) |
 | CI/CD | [docs/ci-cd.md](docs/ci-cd.md) | [docs/ci-cd.es.md](docs/ci-cd.es.md) |
 | Kubernetes deployment | [deploy/README.md](deploy/README.md) | [deploy/README.es.md](deploy/README.es.md) |
 | Data layer `@medicitas/db` | [packages/db/README.md](packages/db/README.md) | [packages/db/README.es.md](packages/db/README.es.md) |

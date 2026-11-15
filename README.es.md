@@ -34,7 +34,8 @@ Es un workspace de npm: un solo `npm install` en la raíz instala todo.
 npm install
 npm run build        # paquetes compartidos y luego servicios
 npm run typecheck
-npm test
+npm test             # pruebas unitarias; las de integración se saltan sin base de datos
+npm run test:all     # suites y E2E Compose (requiere Docker; vea límites)
 npm run dev -w services/edge-gateway
 ```
 
@@ -122,6 +123,20 @@ de Keycloak. Vea [requisitos de pruebas y cobertura de CI](docs/ci-cd.es.md). La
 rutas están conectadas al arranque normal; esta guía no acredita una demo completa
 ejecutada. [Postman](postman/README.es.md) describe los pasos y sus prerrequisitos.
 
+## Pruebas
+
+```bash
+npm run test:all
+```
+
+El runner levanta PostgreSQL 18 y Redis descartables para las suites y luego
+ejecuta el recorrido de Compose. Prepare `.env` como se indicó e instale antes
+las dependencias npm. La etapa 2 recompila y modifica la pila de demo, conservando
+los volúmenes existentes. Las pruebas de Keycloak con realm temporal aún necesitan
+configuración aparte y pueden omitirse. La limpieza predeterminada de la etapa 1
+elimina sus contenedores y volúmenes. Opciones, resultados registrados y límites:
+[informe de pruebas](docs/test-report.es.md).
+
 ## Documentación
 
 | Tema | Español | English |
@@ -136,6 +151,7 @@ ejecutada. [Postman](postman/README.es.md) describe los pasos y sus prerrequisit
 | Concurrencia: el último espacio | [docs/concurrency.es.md](docs/concurrency.es.md) | [docs/concurrency.md](docs/concurrency.md) |
 | Caché de disponibilidad | [docs/cache.es.md](docs/cache.es.md) | [docs/cache.md](docs/cache.md) |
 | Índices y sus planes | [docs/indexes.es.md](docs/indexes.es.md) | [docs/indexes.md](docs/indexes.md) |
+| Informe de pruebas | [docs/test-report.es.md](docs/test-report.es.md) | [docs/test-report.md](docs/test-report.md) |
 | CI/CD | [docs/ci-cd.es.md](docs/ci-cd.es.md) | [docs/ci-cd.md](docs/ci-cd.md) |
 | Despliegue en Kubernetes | [deploy/README.es.md](deploy/README.es.md) | [deploy/README.md](deploy/README.md) |
 | Capa de datos `@medicitas/db` | [packages/db/README.es.md](packages/db/README.es.md) | [packages/db/README.md](packages/db/README.md) |

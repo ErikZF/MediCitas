@@ -29,11 +29,13 @@ flowchart TD
             PG["postgres:18-alpine\n(healthcheck enabled)"]
         end
         
-        IntegTest["Job: DB Integration & Concurrency\n(TEST_DATABASE_URL)\n- RLS policy checks\n- Appointment lifecycle and availability\n- Concurrency and critical races (I1, I2, I5)"]
+        IntegTest["Job: DB Integration & Concurrency\n(npm run test:all -- --external --no-e2e)\n- every workspace suite\n- RLS, lifecycle, cache, audit\n- races (I1, I2, I3)"]
+        E2E["Job: End-to-end against Docker Compose\n(cp .env.example .env; npm run test:e2e)"]
         DockerBuild["Job: Docker Build Validation\nMatrix: 5 microservices\n(edge-gateway, clinics, users, appointments, audit)"]
 
         Quality --> UnitTest
         UnitTest --> IntegTest
+        Quality --> E2E
         IntegTest --> DockerBuild
     end
 
@@ -71,18 +73,16 @@ flowchart TD
    - Injects `TEST_DATABASE_URL: postgres://test:test_password@localhost:5432/postgres`.
    - Loads the four schemas and the demo seed into their own databases, as `docker compose up` does, so a seed that breaks a constraint fails here.
    - Also starts **Redis 7** (`redis:7-alpine`) and injects `TEST_REDIS_URL: redis://localhost:6379` for the availability cache tests (E8, I8). Without that variable those tests are skipped.
-   - The tests create a throwaway database on the fly (`medicitas_<label>_<pid>`) and apply the real schema [`database/appointments/init.sql`](../database/appointments/init.sql), with its extensions (`btree_gist`), exclusion constraints and RLS policies.
-   - It runs only `npm run test:integration -w packages/db` and
-     `npm test -w services/appointments-service`. It checks:
-     - Multi-tenant transactions (`withTenantTx`) with the least-privilege role `medicitas_app`.
-     - Row-level security (RLS) policies.
-     - Scheduling and the appointment lifecycle (RF5, RF6, RF7, RF8, RF9, RF10-RF13, RF21).
-     - Last-slot and same-patient races (I1, I2); isolation checks cover I5 separately.
-   - It does not run clinics/users/audit database suites or a real Keycloak login.
-     Loading their seed schemas is not the same as exercising those service APIs.
-   - Drops the temporary database at the end.
+   - Runs `npm run test:all -- --external --no-e2e`: the same command as locally, with these service containers instead of `docker-compose.test.yml`. It builds everything and runs the suites of all eight workspaces (unit, integration and race), not only appointments.
+   - Each suite creates throwaway databases on the fly and applies the real `init.sql` of its database, with its extensions (`btree_gist`), exclusion constraints, triggers, roles and RLS policies, and drops them at the end.
+   - What each test covers: [test-report.md](test-report.md).
 
-4. **`docker-build` (Docker image validation)**:
+4. **`e2e-compose` (end-to-end against Docker Compose)**:
+   - Does what the evaluator does on a fresh clone: `cp .env.example .env`, then `npm run test:e2e`.
+   - The command runs `docker compose up -d --build`, waits until the gateway answers and Keycloak has the demo users, and runs the 25 steps of [`deploy/scripts/test-all-endpoints.mjs`](../deploy/scripts/test-all-endpoints.mjs) through the gateway with real Keycloak tokens.
+   - If it fails, the job prints `docker compose ps -a` and the last lines of every container's log.
+
+5. **`docker-build` (Docker image validation)**:
    - Uses a matrix to build the images of the 5 microservices in parallel with [`services/Dockerfile`](../services/Dockerfile):
      - `edge-gateway`
      - `clinics-service`
@@ -91,7 +91,7 @@ flowchart TD
      - `audit-service`
    - Checks image builds with `push: false`; it does not publish or run Compose.
 
-`unit-tests`, `integration-tests` and `docker-build` each depend on `quality`, then
+`unit-tests`, `integration-tests`, `e2e-compose` and `docker-build` depend on `quality`, then
 run independently. A push to `docs/**` does not trigger this workflow; a pull
 request targeting `main` does. A successful job does not prove the full stack works.
 
@@ -110,8 +110,10 @@ npm test
 ```
 
 `npm test` is the workspace runner. Missing infrastructure can produce a successful
-exit with skipped tests; inspect the summary. There is no single command here that
-prepares every dependency and executes all real-stack integrations.
+exit with skipped tests; inspect the summary. `npm run test:all` now starts its
+own PostgreSQL/Redis test stack, builds/runs every workspace and then the Compose
+E2E walkthrough. See [runner options and effects](test-report.md). It does not
+prepare the opt-in `j2` realm; a zero exit can still include those skipped tests.
 
 | Configuration | Enables | Requirements |
 | --- | --- | --- |
@@ -126,11 +128,11 @@ No checked-in command prepares this temporary realm. The demo realm
 `Sistema_Clinico` does not satisfy that fixture. Leave the opt-in unset until the
 fixture is prepared; do not run it against shared identity data.
 
-For the CI database/cache subset, set the two test URLs locally, then run:
+To reproduce the CI workspace job with a prepared disposable test instance,
+set the two test URLs locally and run:
 
 ```bash
-npm run test:integration -w packages/db
-npm test -w services/appointments-service
+npm run test:all -- --external --no-e2e
 ```
 
 Bash environment syntax (replace placeholders with disposable test credentials):
@@ -155,27 +157,21 @@ but existing Compose volumes are not a fresh test environment. Do not reset shar
 
 ## 4. Coverage and observed verification
 
-| Requirements | Existing evidence | Limits |
-| --- | --- | --- |
-| RF1-RF4 | clinics/users integration suites and opt-in onboarding tests | Real Keycloak fixture requires separate preparation |
-| RF5-RF8 | schedule, availability, cache and agenda-relay suites | Uses injected dependencies; failure/replica caveats in [cache.md](cache.md) |
-| RF9-RF13; I1, I2, I7 | booking, lifecycle and race suites | HTTP handlers and PostgreSQL with injected identity/catalog |
-| I3, I4 | block-vs-booking race, schedule and booking rules | Later schedule edits can leave conflicts; duration comes from a separate catalog |
-| RF14-RF16; RF18-RF19; I6 | patients, clinical-note, patient-history, audit-query and audit-relay suites | No patient profile/contact GET; note reads/writes and contact writes are audited |
-| RF17; I5 | auth unit tests, tenant-tx and service isolation suites | Mock JWKS/injected context in many tests; not proof of every route on Compose |
-| RF20-RF21 | daily-agenda and appointment-counts suites | Separate from full-stack walkthrough |
-| I8 | availability-cache and agenda-relay suites | Ordinary invalidation scenarios; not an unconditional failure/multi-replica guarantee |
+Per-requirement and invariant coverage is in [test-report.md](test-report.md).
+It distinguishes assertions in the tests from observed runs and known limits.
 
-Documentation review on 2026-11-15, based on `origin/main` at `05c61cd`:
+Documentation review on 2026-11-15, updated to `origin/main` at `5759576`:
 
 - `npm ci --ignore-scripts --no-audit --no-fund`: completed on Node.js 24.14.1, npm 11.11.0.
 - `npm run build` and `npm run typecheck`: passed.
 - `kubectl kustomize deploy/k8s/overlays/local`: rendered successfully without applying it.
 - Bash/PowerShell deployment script parsing and `node --check deploy/scripts/test-all-endpoints.mjs`: passed; scripts were not executed.
-- `npm test`: 345 passed, 133 skipped; no test DB/Redis URLs or temporary Keycloak realm configured.
+- `npm test`: 345 passed, 141 skipped; no test DB/Redis URLs or temporary Keycloak realm configured.
 - `npm run seed:check` and `docker compose --env-file .env.example config --quiet`: passed.
 - Docker daemon unavailable: Compose startup, real PostgreSQL/Redis/Keycloak integrations,
   concurrent DB race, measurements and deployment walkthrough were not executed.
+  The new runner was checked statically, not run: its default cleanup removes test
+  containers/volumes, and stage 2 changes the demo data.
 
 The Stage 1 submission also asks for a data dictionary, step-by-step 3NF justification,
 a demonstration video and an AI-use declaration. The reviewed Markdown contains the
