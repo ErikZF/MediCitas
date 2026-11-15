@@ -79,6 +79,9 @@ otra vez cada página como PNG.
 - `clinic_id` es la primera columna de la llave primaria de toda tabla de un inquilino.
   Sus referencias a `clinic` no se dibujan, para que el diagrama se pueda leer.
 
+Cada columna con su significado, la normalización a 3FN y las desviaciones deliberadas:
+[data-model.es.md](data-model.es.md).
+
 ---
 
 ## 2. Detalle de cada base

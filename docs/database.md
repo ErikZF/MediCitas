@@ -78,6 +78,9 @@ keys and the constraints the engine enforces. The source is
 - `clinic_id` is the first column of every tenant table's primary key. Its references
   to `clinic` are not drawn, to keep the picture readable.
 
+Every column with its meaning, the normalization to 3NF and the deliberate departures
+from it: [data-model.md](data-model.md).
+
 ---
 
 ## 2. Database Breakdown
