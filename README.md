@@ -3,7 +3,6 @@
 **English** · [Español](README.es.md)
 
 [![CI](https://github.com/ErikZF/MediCitas/actions/workflows/ci.yml/badge.svg)](https://github.com/ErikZF/MediCitas/actions/workflows/ci.yml)
-[![CD - Publish Images](https://github.com/ErikZF/MediCitas/actions/workflows/cd.yml/badge.svg)](https://github.com/ErikZF/MediCitas/actions/workflows/cd.yml)
 
 Multi-tenant SaaS platform for medical appointments (semester project, Stage 1 · OLTP), built as Node.js + TypeScript microservices.
 
@@ -18,7 +17,7 @@ services/
   audit-service/         append-only audit log                   → logs_db
   Dockerfile             image for any service (--build-arg SERVICE=...)
 packages/                shared libraries the services import by name,
-                         for example @medicitas/http and @medicitas/auth (each with its README)
+                         for example @medicitas/http, @medicitas/auth and @medicitas/db
 database/                schema of each database
 deploy/                  Kubernetes (Kustomize + Kind) manifests and deploy scripts
 keycloak/                versioned realm
@@ -69,11 +68,17 @@ volumes**; existing volumes are preserved and are not migrated automatically.
 The seed job should exit with code 0; it does not remain running. Use
 `docker compose logs --tail=50 <service>` to investigate startup failures.
 
-Only the gateway is published to the host. It forwards every domain route to the
+Only the gateway publishes an HTTP application port by default. Keycloak is on
+8080; PostgreSQL appointments/users/logs/clinics are on 5433/5434/5435/5436, and
+Redis is on 6379. These mappings are not restricted to loopback in Compose; use
+this development setup on a trusted machine. `private_net` is internal; only
+Keycloak and the gateway also join `public_net`. The gateway forwards domain routes to the
 service that owns it, Authorization included, so the whole API is at
 `http://localhost:3000` (for example `GET /availability?...`, `POST /appointments`,
-`GET /audit/logs`). Every service still verifies the token itself. A service that is
-down answers 502 `upstream_unavailable`. Check a private service inside Compose:
+`GET /audit/logs`). Every service still verifies the token itself. An unreachable upstream produces 502
+`upstream_unavailable`; a 15-second socket timeout produces 504 `upstream_timeout`,
+and a missing upstream URL produces 503 `upstream_not_configured`. The gateway
+forwards tokens; domain services authenticate them. Check a private service inside Compose:
 
 ```bash
 docker compose exec clinics-service node -e "fetch('http://127.0.0.1:' + process.env.API_INTERNAL_PORT + '/health').then(r => r.json()).then(console.log)"
@@ -111,6 +116,11 @@ identity or cache readiness test. Authenticated domain calls need fresh Keycloak
 tokens with matching clinic/role claims; see the [API contract](docs/api.md).
 Stop the stack with `docker compose stop` (with the same `-f` options if used).
 
+`npm test` can skip integrations when PostgreSQL, Redis or Keycloak configuration
+is absent. See [test requirements and CI coverage](docs/ci-cd.md). The routes are
+wired at normal startup; this guide does not establish a successful full-stack
+demo. [Postman](postman/README.md) describes the steps and their prerequisites.
+
 ## Documentation
 
 | Topic | English | Español |
@@ -129,4 +139,7 @@ Stop the stack with `docker compose stop` (with the same `-f` options if used).
 | Kubernetes deployment | [deploy/README.md](deploy/README.md) | [deploy/README.es.md](deploy/README.es.md) |
 | Data layer `@medicitas/db` | [packages/db/README.md](packages/db/README.md) | [packages/db/README.es.md](packages/db/README.es.md) |
 
-Every document has an English version (`name.md`) and a Spanish one (`name.es.md`), with a link at the top to switch language. When you change a document, update both versions in the same PR.
+Maintained guides have English and Spanish versions linked at the top. Update
+both together. The historical [index-plan capture](docs/indexes-plans.md) is kept
+in its original language. The deployment guide covers an optional local setup;
+Compose remains the Stage 1 startup path.

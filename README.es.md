@@ -3,7 +3,6 @@
 [English](README.md) · **Español**
 
 [![CI](https://github.com/ErikZF/MediCitas/actions/workflows/ci.yml/badge.svg)](https://github.com/ErikZF/MediCitas/actions/workflows/ci.yml)
-[![CD - Publish Images](https://github.com/ErikZF/MediCitas/actions/workflows/cd.yml/badge.svg)](https://github.com/ErikZF/MediCitas/actions/workflows/cd.yml)
 
 Plataforma SaaS multi-tenant de citas médicas (Proyecto Semestral, Etapa 1 · OLTP), construida como microservicios en Node.js + TypeScript.
 
@@ -18,7 +17,7 @@ services/
   audit-service/         bitácora append-only                   → logs_db
   Dockerfile             imagen de cualquier servicio (--build-arg SERVICE=...)
 packages/                librerías compartidas que los servicios importan por nombre,
-                         por ejemplo @medicitas/http y @medicitas/auth (cada una con su README)
+                         por ejemplo @medicitas/http, @medicitas/auth y @medicitas/db
 database/                esquema de cada base
 deploy/                  manifiestos Kubernetes (Kustomize + Kind) y scripts de despliegue
 keycloak/                realm versionado
@@ -70,11 +69,17 @@ se ejecutan solo sobre **volúmenes de base vacíos**; los existentes se conserv
 no se migran automáticamente. El job de semillas debe terminar con código 0; no
 queda corriendo. Para investigar fallas use `docker compose logs --tail=50 <servicio>`.
 
-Solo el gateway publica puerto al host. Reenvía cada ruta de dominio al servicio que
+Solo el gateway publica un puerto HTTP de la aplicación por defecto. Keycloak usa
+8080; PostgreSQL appointments/users/logs/clinics usa 5433/5434/5435/5436 y Redis,
+6379. Compose no restringe estos mapeos a loopback; use este entorno de desarrollo
+en una máquina de confianza. `private_net` es interna; solo Keycloak y el gateway
+se conectan también a `public_net`. El gateway reenvía las rutas de dominio al servicio que
 la atiende, con el header Authorization incluido, así que toda la API queda en
 `http://localhost:3000` (por ejemplo `GET /availability?...`, `POST /appointments`,
-`GET /audit/logs`). Cada servicio sigue verificando el token por su cuenta. Un servicio
-caído responde 502 `upstream_unavailable`. Compruebe un servicio privado dentro de Compose:
+`GET /audit/logs`). Cada servicio sigue verificando el token por su cuenta. Un upstream
+inalcanzable produce 502 `upstream_unavailable`; un timeout de socket de 15 segundos,
+504 `upstream_timeout`; y una URL de upstream ausente, 503 `upstream_not_configured`.
+El gateway reenvía tokens y los servicios de dominio los autentican. Compruebe un servicio privado dentro de Compose:
 
 ```bash
 docker compose exec clinics-service node -e "fetch('http://127.0.0.1:' + process.env.API_INTERNAL_PORT + '/health').then(r => r.json()).then(console.log)"
@@ -112,6 +117,11 @@ bases, identidad ni caché. Las llamadas de dominio necesitan tokens vigentes de
 Keycloak con clínica y rol correctos; vea el [contrato de la API](docs/api.es.md).
 Detenga la pila con `docker compose stop` (con las mismas opciones `-f` si las usó).
 
+`npm test` puede omitir integraciones si faltan PostgreSQL, Redis o la configuración
+de Keycloak. Vea [requisitos de pruebas y cobertura de CI](docs/ci-cd.es.md). Las
+rutas están conectadas al arranque normal; esta guía no acredita una demo completa
+ejecutada. [Postman](postman/README.es.md) describe los pasos y sus prerrequisitos.
+
 ## Documentación
 
 | Tema | Español | English |
@@ -130,4 +140,7 @@ Detenga la pila con `docker compose stop` (con las mismas opciones `-f` si las u
 | Despliegue en Kubernetes | [deploy/README.es.md](deploy/README.es.md) | [deploy/README.md](deploy/README.md) |
 | Capa de datos `@medicitas/db` | [packages/db/README.es.md](packages/db/README.es.md) | [packages/db/README.md](packages/db/README.md) |
 
-Cada documento tiene una versión en inglés (`nombre.md`) y otra en español (`nombre.es.md`), con un enlace arriba para cambiar de idioma. Si cambia un documento, actualice las dos versiones en el mismo PR.
+Las guías mantenidas tienen versiones en inglés y español enlazadas al inicio.
+Actualice ambas juntas. La [captura histórica de planes](docs/indexes-plans.md)
+se conserva en su idioma original. La guía de despliegue cubre un entorno local
+opcional; Compose sigue siendo el arranque de la Etapa 1.
