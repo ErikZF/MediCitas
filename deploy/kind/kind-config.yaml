@@ -1,0 +1,27 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: medicitas
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # Edge Gateway (single public API entrypoint) -> http://localhost:3000
+      - containerPort: 30080
+        hostPort: 3000
+        protocol: TCP
+      # Keycloak IAM (OIDC token issuance & admin console) -> http://localhost:8080
+      - containerPort: 30880
+        hostPort: 8080
+        protocol: TCP
+      # Standard HTTP/HTTPS ports for optional Ingress controller
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
