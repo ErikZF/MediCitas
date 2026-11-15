@@ -11,7 +11,7 @@ Multi-tenant SaaS platform for medical appointments (semester project, Stage 1 �
 
 ```
 services/
-  edge-gateway/          public root/health; domain proxy pending
+  edge-gateway/          single public entry; forwards each path to its service
   clinics-service/       clinics, specialties and services       → clinics_db
   users-service/         users, professionals and patients       → users_db
   appointments-service/  schedules, appointments, clinical notes → appointments_db
@@ -68,14 +68,17 @@ volumes**; existing volumes are preserved and are not migrated automatically.
 The seed job should exit with code 0; it does not remain running. Use
 `docker compose logs --tail=50 <service>` to investigate startup failures.
 
-Only the gateway is published to the host by default. It currently serves `/`
-and `/health`, **without a domain proxy**. Check a private service inside Compose:
+Only the gateway is published to the host. It forwards every domain route to the
+service that owns it, Authorization included, so the whole API is at
+`http://localhost:3000` (for example `GET /availability?...`, `POST /appointments`,
+`GET /audit/logs`). Every service still verifies the token itself. A service that is
+down answers 502 `upstream_unavailable`. Check a private service inside Compose:
 
 ```bash
 docker compose exec clinics-service node -e "fetch('http://127.0.0.1:' + process.env.API_INTERNAL_PORT + '/health').then(r => r.json()).then(console.log)"
 ```
 
-For Postman on the host, create an ignored `.env.compose-demo.yaml` locally:
+To call a service directly from the host instead (optional), create an ignored `.env.compose-demo.yaml` locally:
 
 ```yaml
 services:

@@ -4,8 +4,8 @@
 
 ## Local environment
 
-1. Start Compose using the [README local port override](../README.md#local-startup).
-   Default Compose publishes only the gateway, which has no domain proxy.
+1. Start Compose as in the [README](../README.md#local-startup). The gateway on port 3000
+   forwards every domain route; the local port override is only needed to call a service directly.
 2. Import [the safe environment example](environments/medicitas.local.example.postman_environment.json)
    into Postman, duplicate it as **MediCitas Local**, and select the duplicate.
    Host URLs assume ports 3000-3004 and Keycloak 8080; adjust to your local mappings.

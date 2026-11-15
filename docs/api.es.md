@@ -22,26 +22,32 @@ La disponibilidad es una foto, no una reserva. Por eso la reserva deja la decisi
 final sobre solapes a las restricciones de PostgreSQL, que también aplican a
 inserciones concurrentes. La API expone esa distinción como 201 para una reserva
 concedida, 409 para un conflicto de agenda y 422 para entradas inválidas o reglas de
-negocio. El gateway es el punto de entrada público previsto, pero hoy solo sirve la
-raíz y health, y no reenvía peticiones.
+negocio. El gateway es el punto de entrada público: reenvía cada ruta al servicio que la
+atiende (ver abajo).
 
 ## Disponibilidad real de las rutas
 
-Las rutas de abajo son relativas a su **servicio dueño**. Todas las funciones de
+Las rutas de abajo son las mismas a través del gateway (`http://localhost:3000` con
+Compose) y en su **servicio dueño**. Todas las funciones de
 esta tabla se conectan en su `server.ts` normal; las pruebas también pueden inyectar
 dependencias mediante `createApp(deps)`.
 
 | Servicio | Rutas activas al arrancar normalmente | Dependencias | Acceso desde el host con Compose por defecto |
 | --- | --- | --- | --- |
-| edge-gateway | Solo `GET /`, `GET /health` | Configuración HTTP | `API_PORT` (3000 por defecto); sin proxy de dominio |
+| edge-gateway | `GET /`, `GET /health`, y todas las rutas de abajo reenviadas a su servicio | Las cuatro `*_SERVICE_URL` | `API_PORT` (3000 por defecto) |
 | clinics-service | `/health`, RF1 `/clinics`, RF3 `/services`, RF4 `/specialties`, `/clinic/time-zone` | Base clinics, Keycloak; users para RF1 | Solo red privada |
 | users-service | `/health`, RF2 `/users`, RF4 `/professionals`, RF14 `/patients` | Base users, Admin API de Keycloak, clinics | Solo red privada |
 | appointments-service | `/health`, asociaciones RF4, RF5-RF13, RF15-RF16, RF20-RF21 de abajo | Base appointments, clinics, users, Keycloak; caché/relay de agenda Redis opcionales | Solo red privada |
 | audit-service | `/health`, RF19 `/audit/logs` | Base logs, Keycloak | Solo red privada |
 
 Compose ya arranca los cinco servicios HTTP, cuatro bases PostgreSQL 18, Keycloak,
-su carga de usuarios y Redis. Para acceso directo desde el host use el override de
-puertos local del [README](../README.es.md#arranque-local); no envíe dominio al gateway.
+su carga de usuarios y Redis. Envíe las peticiones de dominio al gateway. Elige el servicio por la ruta: `/working-hours`
+y `/blocks` de un profesional y `/appointments` de un paciente van a appointments-service;
+las demás rutas de `/professionals` y `/patients`, a users-service. Quita los headers de
+salto (hop-by-hop) y `x-test-context`, agrega `X-Forwarded-*`, y responde 502
+`upstream_unavailable`, 504 `upstream_timeout` o 503 `upstream_not_configured` cuando no
+alcanza un servicio. El override de puertos local del
+[README](../README.es.md#arranque-local) es solo para llamar a un servicio directamente.
 
 **Dependencias de appointments-service.** Reservas, disponibilidad y horarios llaman
 a otros servicios con el Bearer de quien llama, antes de abrir cualquier transacción:
@@ -502,7 +508,7 @@ completa. Obtenga tokens nuevos de usuarios semilla en Keycloak; no guarde secre
 
 Contrastado con rutas, arranque y pruebas existentes; el contrato no afirma una demo
 completa ejecutada. El detalle de cobertura corresponde a J7.
-Falta implementar: proxy del gateway; entrega de auditoría RF18 desde outbox de
+Falta implementar: entrega de auditoría RF18 desde outbox de
 users/appointments a `logs_db` (N10); lectura de contacto del paciente. El relay de
 agenda Redis ya implementado repara invalidaciones de caché; no es el de auditoría.
 Leer bitácora semilla no demuestra entrega de eventos nuevos. La validación de demo
