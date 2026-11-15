@@ -24,7 +24,7 @@ const ENV: Record<ServiceName, string> = {
  * live in appointments-service, the profiles themselves in users-service.
  */
 const ROUTES: ReadonlyArray<{ pattern: RegExp; service: ServiceName }> = [
-  { pattern: /^\/professionals\/[^/]+\/(working-hours|blocks)(\/|$)/, service: 'appointments' },
+  { pattern: /^\/professionals\/[^/]+\/(working-hours|blocks|services)(\/|$)/, service: 'appointments' },
   { pattern: /^\/patients\/[^/]+\/appointments(\/|$)/, service: 'appointments' },
   { pattern: /^\/(appointments|availability|agenda)(\/|$)/, service: 'appointments' },
   { pattern: /^\/(professionals|patients|users)(\/|$)/, service: 'users' },

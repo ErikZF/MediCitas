@@ -1,0 +1,256 @@
+# Zero-trust ingress isolation mirroring the public_net / private_net split
+# from docker-compose.yml: deny all pod ingress by default, then allow only
+# explicit microservice, gateway, cache, database, and identity flows.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  labels:
+    app.kubernetes.io/part-of: medicitas
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-edge-gateway
+  labels:
+    app.kubernetes.io/part-of: medicitas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: edge-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-keycloak
+  labels:
+    app.kubernetes.io/part-of: medicitas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 9000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-clinics-service
+  labels:
+    app.kubernetes.io/part-of: medicitas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: clinics-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: edge-gateway
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: users-service
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: appointments-service
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-users-service
+  labels:
+    app.kubernetes.io/part-of: medicitas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: users-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: edge-gateway
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: clinics-service
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: appointments-service
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-appointments-service
+  labels:
+    app.kubernetes.io/part-of: medicitas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: appointments-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: edge-gateway
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-audit-service
+  labels:
+    app.kubernetes.io/part-of: medicitas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: audit-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: edge-gateway
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis
+  labels:
+    app.kubernetes.io/part-of: medicitas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: appointments-service
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-db-clinics
+  labels:
+    app.kubernetes.io/part-of: medicitas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: db-clinics
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: clinics-service
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-db-users
+  labels:
+    app.kubernetes.io/part-of: medicitas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: db-users
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: users-service
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: audit-service
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-db-appointments
+  labels:
+    app.kubernetes.io/part-of: medicitas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: db-appointments
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: appointments-service
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: audit-service
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-db-logs
+  labels:
+    app.kubernetes.io/part-of: medicitas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: db-logs
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: audit-service
+      ports:
+        - protocol: TCP
+          port: 5432

@@ -20,6 +20,7 @@ services/
 packages/                shared libraries the services import by name,
                          for example @medicitas/http and @medicitas/auth (each with its README)
 database/                schema of each database
+deploy/                  Kubernetes (Kustomize + Kind) manifests and deploy scripts
 keycloak/                versioned realm
 docs/                    documentation
 postman/                 demo collection and safe environment template
@@ -117,6 +118,7 @@ Stop the stack with `docker compose stop` (with the same `-f` options if used).
 | API contract | [docs/api.md](docs/api.md) | [docs/api.es.md](docs/api.es.md) |
 | Postman demo | [postman/README.md](postman/README.md) | [postman/README.es.md](postman/README.es.md) |
 | Databases and RLS | [docs/database.md](docs/database.md) | [docs/database.es.md](docs/database.es.md) |
+| Multi-tenancy architecture | [docs/multitenancy.md](docs/multitenancy.md) | [docs/multitenancy.es.md](docs/multitenancy.es.md) |
 | Multi-tenancy comparison | [docs/database-comparison.md](docs/database-comparison.md) | [docs/database-comparison.es.md](docs/database-comparison.es.md) |
 | Identity with Keycloak | [docs/keycloak.md](docs/keycloak.md) | [docs/keycloak.es.md](docs/keycloak.es.md) |
 | Demo seed data | [docs/seed-data.md](docs/seed-data.md) | [docs/seed-data.es.md](docs/seed-data.es.md) |
@@ -124,6 +126,7 @@ Stop the stack with `docker compose stop` (with the same `-f` options if used).
 | Availability cache | [docs/cache.md](docs/cache.md) | [docs/cache.es.md](docs/cache.es.md) |
 | Indexes and their plans | [docs/indexes.md](docs/indexes.md) | [docs/indexes.es.md](docs/indexes.es.md) |
 | CI/CD | [docs/ci-cd.md](docs/ci-cd.md) | [docs/ci-cd.es.md](docs/ci-cd.es.md) |
+| Kubernetes deployment | [deploy/README.md](deploy/README.md) | [deploy/README.es.md](deploy/README.es.md) |
 | Data layer `@medicitas/db` | [packages/db/README.md](packages/db/README.md) | [packages/db/README.es.md](packages/db/README.es.md) |
 
 Every document has an English version (`name.md`) and a Spanish one (`name.es.md`), with a link at the top to switch language. When you change a document, update both versions in the same PR.

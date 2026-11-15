@@ -1,0 +1,102 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-seed
+  labels:
+    app.kubernetes.io/name: keycloak-seed
+    app.kubernetes.io/component: identity-seed
+    app.kubernetes.io/part-of: medicitas
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak-seed
+        app.kubernetes.io/component: identity-seed
+        app.kubernetes.io/part-of: medicitas
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: wait-for-keycloak
+          image: medicitas/assets:local
+          imagePullPolicy: IfNotPresent
+          command:
+            - node
+            - -e
+            - |
+              const url = `${process.env.KEYCLOAK_INTERNAL_URL}/realms/${encodeURIComponent(process.env.REALM_NAME)}/.well-known/openid-configuration`;
+              (async () => {
+                for (;;) {
+                  try {
+                    const r = await fetch(url);
+                    if (r.ok) process.exit(0);
+                  } catch {}
+                  await new Promise((r) => setTimeout(r, 3000));
+                }
+              })();
+          env:
+            - name: KEYCLOAK_INTERNAL_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: medicitas-config
+                  key: KEYCLOAK_INTERNAL_URL
+            - name: REALM_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: medicitas-config
+                  key: REALM_NAME
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: keycloak-seed
+          image: medicitas/assets:local
+          imagePullPolicy: IfNotPresent
+          command: ["node", "/assets/keycloak/seed-users.mjs"]
+          env:
+            - name: KEYCLOAK_INTERNAL_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: medicitas-config
+                  key: KEYCLOAK_INTERNAL_URL
+            - name: KEYCLOAK_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: medicitas-secrets
+                  key: KEYCLOAK_ADMIN_USERNAME
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: medicitas-secrets
+                  key: KEYCLOAK_ADMIN_PASSWORD
+            - name: REALM_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: medicitas-config
+                  key: REALM_NAME
+            - name: KEYCLOAK_TEST_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: medicitas-secrets
+                  key: KEYCLOAK_TEST_PASSWORD
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

@@ -20,6 +20,7 @@ services/
 packages/                librerías compartidas que los servicios importan por nombre,
                          por ejemplo @medicitas/http y @medicitas/auth (cada una con su README)
 database/                esquema de cada base
+deploy/                  manifiestos Kubernetes (Kustomize + Kind) y scripts de despliegue
 keycloak/                realm versionado
 docs/                    documentación
 postman/                 colección de demo y plantilla segura de entorno
@@ -118,6 +119,7 @@ Detenga la pila con `docker compose stop` (con las mismas opciones `-f` si las u
 | Contrato de la API | [docs/api.es.md](docs/api.es.md) | [docs/api.md](docs/api.md) |
 | Demo Postman | [postman/README.es.md](postman/README.es.md) | [postman/README.md](postman/README.md) |
 | Bases de datos y RLS | [docs/database.es.md](docs/database.es.md) | [docs/database.md](docs/database.md) |
+| Arquitectura multi-tenancy | [docs/multitenancy.es.md](docs/multitenancy.es.md) | [docs/multitenancy.md](docs/multitenancy.md) |
 | Comparación de multi-tenancy | [docs/database-comparison.es.md](docs/database-comparison.es.md) | [docs/database-comparison.md](docs/database-comparison.md) |
 | Identidad con Keycloak | [docs/keycloak.es.md](docs/keycloak.es.md) | [docs/keycloak.md](docs/keycloak.md) |
 | Datos semilla de demo | [docs/seed-data.es.md](docs/seed-data.es.md) | [docs/seed-data.md](docs/seed-data.md) |
@@ -125,6 +127,7 @@ Detenga la pila con `docker compose stop` (con las mismas opciones `-f` si las u
 | Caché de disponibilidad | [docs/cache.es.md](docs/cache.es.md) | [docs/cache.md](docs/cache.md) |
 | Índices y sus planes | [docs/indexes.es.md](docs/indexes.es.md) | [docs/indexes.md](docs/indexes.md) |
 | CI/CD | [docs/ci-cd.es.md](docs/ci-cd.es.md) | [docs/ci-cd.md](docs/ci-cd.md) |
+| Despliegue en Kubernetes | [deploy/README.es.md](deploy/README.es.md) | [deploy/README.md](deploy/README.md) |
 | Capa de datos `@medicitas/db` | [packages/db/README.es.md](packages/db/README.es.md) | [packages/db/README.md](packages/db/README.md) |
 
 Cada documento tiene una versión en inglés (`nombre.md`) y otra en español (`nombre.es.md`), con un enlace arriba para cambiar de idioma. Si cambia un documento, actualice las dos versiones en el mismo PR.
