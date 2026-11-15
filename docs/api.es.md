@@ -22,26 +22,32 @@ La disponibilidad es una foto, no una reserva. Por eso la reserva deja la decisi
 final sobre solapes a las restricciones de PostgreSQL, que también aplican a
 inserciones concurrentes. La API expone esa distinción como 201 para una reserva
 concedida, 409 para un conflicto de agenda y 422 para entradas inválidas o reglas de
-negocio. El gateway es el punto de entrada público previsto, pero hoy solo sirve la
-raíz y health, y no reenvía peticiones.
+negocio. El gateway es el punto de entrada público: reenvía cada ruta al servicio que la
+atiende (ver abajo).
 
 ## Disponibilidad real de las rutas
 
-Las rutas de abajo son relativas a su **servicio dueño**. Todas las funciones de
+Las rutas de abajo son las mismas a través del gateway (`http://localhost:3000` con
+Compose) y en su **servicio dueño**. Todas las funciones de
 esta tabla se conectan en su `server.ts` normal; las pruebas también pueden inyectar
 dependencias mediante `createApp(deps)`.
 
 | Servicio | Rutas activas al arrancar normalmente | Dependencias | Acceso desde el host con Compose por defecto |
 | --- | --- | --- | --- |
-| edge-gateway | Solo `GET /`, `GET /health` | Configuración HTTP | `API_PORT` (3000 por defecto); sin proxy de dominio |
+| edge-gateway | `GET /`, `GET /health`, y todas las rutas de abajo reenviadas a su servicio | Las cuatro `*_SERVICE_URL` | `API_PORT` (3000 por defecto) |
 | clinics-service | `/health`, RF1 `/clinics`, RF3 `/services`, RF4 `/specialties`, `/clinic/time-zone` | Base clinics, Keycloak; users para RF1 | Solo red privada |
 | users-service | `/health`, RF2 `/users`, RF4 `/professionals`, RF14 `/patients` | Base users, Admin API de Keycloak, clinics | Solo red privada |
 | appointments-service | `/health`, asociaciones RF4, RF5-RF13, RF15-RF16, RF20-RF21 de abajo | Base appointments, clinics, users, Keycloak; caché/relay de agenda Redis opcionales | Solo red privada |
-| audit-service | `/health`, RF19 `/audit/logs` | Base logs, Keycloak | Solo red privada |
+| audit-service | `/health`, RF19 `/audit/logs`, y el relay de auditoría RF18 en segundo plano | Base logs, Keycloak; bases appointments y users para el relay | Solo red privada |
 
 Compose ya arranca los cinco servicios HTTP, cuatro bases PostgreSQL 18, Keycloak,
-su carga de usuarios y Redis. Para acceso directo desde el host use el override de
-puertos local del [README](../README.es.md#arranque-local); no envíe dominio al gateway.
+su carga de usuarios y Redis. Envíe las peticiones de dominio al gateway. Elige el servicio por la ruta: `/working-hours`
+y `/blocks` de un profesional y `/appointments` de un paciente van a appointments-service;
+las demás rutas de `/professionals` y `/patients`, a users-service. Quita los headers de
+salto (hop-by-hop) y `x-test-context`, agrega `X-Forwarded-*`, y responde 502
+`upstream_unavailable`, 504 `upstream_timeout` o 503 `upstream_not_configured` cuando no
+alcanza un servicio. El override de puertos local del
+[README](../README.es.md#arranque-local) es solo para llamar a un servicio directamente.
 
 **Dependencias de appointments-service.** Reservas, disponibilidad y horarios llaman
 a otros servicios con el Bearer de quien llama, antes de abrir cualquier transacción:
@@ -351,8 +357,8 @@ Si el evento no se puede guardar, la petición falla y la nota no se escribe ni 
 devuelve. Las peticiones rechazadas (403, 404, 409, 422) no registran nada.
 El payload del evento es
 `{ appUserId, patientId, action: "create"|"read"|"update", resource: "clinical_note", resourceId, occurredAt }`;
-nunca contiene el texto de la nota. Copiar los eventos a `audit_log` en `logs_db` es
-tarea del relay (tarjeta N10), que todavía no está implementado.
+nunca contiene el texto de la nota. El relay de auditoría de audit-service copia cada
+evento a `audit_log` en `logs_db` en cerca de un segundo (ver [entrega de RF18](#entrega-de-rf18-audit-service)).
 
 ## Pacientes (users-service, RF14 parcial)
 
@@ -372,7 +378,7 @@ Errores: 404 not_found para paciente desconocido/ajeno; 409 duplicate_identifica
 por clínica; 422 invalid_request para entrada inválida/vacía; 503 audit_unavailable
 si falla encolar auditoría de contacto (revierte la escritura). La consulta devuelve
 solo patientId, sin contacto ni otros datos personales. Las escrituras encolan
-AuditRecorded en users_db.outbox; entrega a logs_db pendiente N10. No hay lectura de contacto.
+AuditRecorded en users_db.outbox; el relay de auditoría los entrega a logs_db. No hay lectura de contacto.
 
 ## Historial del paciente (appointments-service, RF16)
 
@@ -465,7 +471,18 @@ permite un solo límite. Sin coincidencias devuelve 200 `[]`.
 403 `forbidden` para los roles de recepción, profesional o plataforma;
 422 `invalid_request` para filtros inválidos o extra. No se verifica en otros
 servicios que el usuario o el paciente existan. No hay rutas POST, PUT ni DELETE de
-auditoría; leer eventos no demuestra que RF18 los esté produciendo.
+auditoría.
+
+### Entrega de RF18 (audit-service)
+
+No tiene ruta HTTP: audit-service corre cada segundo un relay que toma los eventos
+`AuditRecorded` pendientes del `outbox` de `appointments_db` (notas clínicas) y de
+`users_db` (contacto de pacientes) como `medicitas_relay`, con `FOR UPDATE SKIP LOCKED`.
+Los inserta en `audit_log` con `audit_log_id = event_id` y `ON CONFLICT DO NOTHING`, como
+`medicitas_app` con la clínica de cada evento en el contexto, y luego los marca
+publicados. Si `logs_db` está caída, los eventos esperan; si el relay muere después de
+insertar, la siguiente pasada no puede duplicarlos. Un evento mal formado se registra
+en el log y queda pendiente sin bloquear a los demás. Los eventos `AgendaChanged` no se tocan.
 
 ## Errores compartidos
 
@@ -502,8 +519,5 @@ completa. Obtenga tokens nuevos de usuarios semilla en Keycloak; no guarde secre
 
 Contrastado con rutas, arranque y pruebas existentes; el contrato no afirma una demo
 completa ejecutada. El detalle de cobertura corresponde a J7.
-Falta implementar: proxy del gateway; entrega de auditoría RF18 desde outbox de
-users/appointments a `logs_db` (N10); lectura de contacto del paciente. El relay de
-agenda Redis ya implementado repara invalidaciones de caché; no es el de auditoría.
-Leer bitácora semilla no demuestra entrega de eventos nuevos. La validación de demo
+Falta implementar: la lectura de contacto del paciente (hoy solo se auditan las escrituras). La validación de demo
 con pila completa y la prueba automatizada de carrera son independientes de este recorrido.

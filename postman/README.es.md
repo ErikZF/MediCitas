@@ -4,8 +4,9 @@
 
 ## Entorno local
 
-1. Arranque Compose con el [override local de puertos del README](../README.es.md#arranque-local).
-   Compose por defecto solo publica el gateway, que no tiene proxy de dominio.
+1. Arranque Compose como indica el [README](../README.es.md#arranque-local). El gateway en el
+   puerto 3000 reenvía todas las rutas de dominio; el override local de puertos solo hace falta
+   para llamar a un servicio directamente.
 2. Importe [el ejemplo seguro de entorno](environments/medicitas.local.example.postman_environment.json)
    en Postman, duplíquelo como **MediCitas Local** y seleccione la copia.
    Las URL suponen puertos 3000-3004 y Keycloak 8080; ajuste a sus mapeos locales.

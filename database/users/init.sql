@@ -366,6 +366,29 @@ CREATE POLICY outbox_insert_policy ON public.outbox
 
 REVOKE ALL ON public.outbox FROM PUBLIC, medicitas_app;
 GRANT INSERT ON public.outbox TO medicitas_app;
+
+-- The audit relay (audit-service) reads and marks the events of every clinic.
+-- It only ever runs as medicitas_relay, which cannot touch any other table.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'medicitas_relay') THEN
+        CREATE ROLE medicitas_relay;
+    END IF;
+    EXECUTE format('GRANT medicitas_relay TO %I', CURRENT_USER);
+END
+$$;
+
+GRANT USAGE ON SCHEMA public TO medicitas_relay;
+GRANT SELECT, UPDATE (published_at) ON public.outbox TO medicitas_relay;
+
+CREATE POLICY outbox_relay_select_policy ON public.outbox
+    FOR SELECT TO medicitas_relay
+    USING (true);
+
+CREATE POLICY outbox_relay_update_policy ON public.outbox
+    FOR UPDATE TO medicitas_relay
+    USING (true)
+    WITH CHECK (true);
 BEGIN;
 -- Existing rows keep their original ownership and roles.
 ALTER TABLE public.app_user ADD COLUMN IF NOT EXISTS is_first_admin boolean NOT NULL DEFAULT false;

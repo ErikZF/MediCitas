@@ -146,10 +146,13 @@ services:
     container_name: Redis_MediCitas
     ports:
       - "${REDIS_PORT}:${REDIS_PORT}"
+    # The official image ignores REDIS_ARGS (only redis-stack reads it): without this
+    # command Redis ran with no password, REDIS_URL's AUTH failed and the availability
+    # cache silently fell back to PostgreSQL.
+    command: ["redis-server", "--port", "${REDIS_PORT}", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
     environment:
       REDIS_PORT: ${REDIS_PORT}
       REDISCLI_AUTH: ${REDIS_PASSWORD}
-      REDIS_ARGS: "--requirepass ${REDIS_PASSWORD} --appendonly yes"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -276,12 +279,25 @@ services:
       DB_LOGS_NAME: ${DB_LOGS_NAME}
       DB_LOGS_USER: ${DB_LOGS_USER}
       DB_LOGS_PASSWORD: ${DB_LOGS_PASSWORD}
+      # RF18 audit relay: reads the outbox of the two producers (as medicitas_relay).
+      DB_APPOINTMENTS_HOST: ${DB_APPOINTMENTS_HOST}
+      DB_APPOINTMENTS_NAME: ${DB_APPOINTMENTS_NAME}
+      DB_APPOINTMENTS_USER: ${DB_APPOINTMENTS_USER}
+      DB_APPOINTMENTS_PASSWORD: ${DB_APPOINTMENTS_PASSWORD}
+      DB_USERS_HOST: ${DB_USERS_HOST}
+      DB_USERS_NAME: ${DB_USERS_NAME}
+      DB_USERS_USER: ${DB_USERS_USER}
+      DB_USERS_PASSWORD: ${DB_USERS_PASSWORD}
       KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE}
       REALM_NAME: ${REALM_NAME}
     depends_on:
       db_logs:
+        condition: service_healthy
+      db_appointments:
+        condition: service_healthy
+      db_users:
         condition: service_healthy
       keycloak:
         condition: service_healthy

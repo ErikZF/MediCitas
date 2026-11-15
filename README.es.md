@@ -11,7 +11,7 @@ Plataforma SaaS multi-tenant de citas médicas (Proyecto Semestral, Etapa 1 · O
 
 ```
 services/
-  edge-gateway/          raíz/health públicos; proxy de dominio pendiente
+  edge-gateway/          única entrada pública; reenvía cada ruta a su servicio
   clinics-service/       clínicas, especialidades y servicios   → clinics_db
   users-service/         usuarios, profesionales y pacientes    → users_db
   appointments-service/  agenda, citas y notas clínicas         → appointments_db
@@ -69,14 +69,17 @@ se ejecutan solo sobre **volúmenes de base vacíos**; los existentes se conserv
 no se migran automáticamente. El job de semillas debe terminar con código 0; no
 queda corriendo. Para investigar fallas use `docker compose logs --tail=50 <servicio>`.
 
-Por defecto solo el gateway publica puerto al host. Hoy sirve `/` y `/health`,
-**sin proxy de dominio**. Compruebe un servicio privado dentro de Compose:
+Solo el gateway publica puerto al host. Reenvía cada ruta de dominio al servicio que
+la atiende, con el header Authorization incluido, así que toda la API queda en
+`http://localhost:3000` (por ejemplo `GET /availability?...`, `POST /appointments`,
+`GET /audit/logs`). Cada servicio sigue verificando el token por su cuenta. Un servicio
+caído responde 502 `upstream_unavailable`. Compruebe un servicio privado dentro de Compose:
 
 ```bash
 docker compose exec clinics-service node -e "fetch('http://127.0.0.1:' + process.env.API_INTERNAL_PORT + '/health').then(r => r.json()).then(console.log)"
 ```
 
-Para usar Postman desde el host, cree localmente `.env.compose-demo.yaml`, ignorado:
+Para llamar a un servicio directamente desde el host (opcional), cree localmente `.env.compose-demo.yaml`, ignorado:
 
 ```yaml
 services:

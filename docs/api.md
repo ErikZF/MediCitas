@@ -20,26 +20,32 @@ through request fields; the authentication wiring limits below remain essential.
 Availability is a snapshot, not a reservation. Booking therefore leaves the final
 overlap decision to PostgreSQL constraints, which also apply to concurrent inserts.
 The API exposes that distinction as 201 for a granted booking, 409 for a scheduling
-conflict and 422 for invalid input or business rules. The gateway is the planned
-public entry point, but currently serves only root/health and forwards no requests.
+conflict and 422 for invalid input or business rules. The gateway is the public entry
+point: it forwards each route to the service that owns it (see below).
 
 ## Actual route availability
 
-The routes below are relative to their **owning service**. All features in this
+The routes below are the same through the gateway (`http://localhost:3000` with
+Compose) and on their **owning service**. All features in this
 table are wired by their normal `server.ts`; tests can also inject dependencies
 through `createApp(deps)`.
 
 | Service | Routes enabled at normal startup | Runtime dependencies | Default Compose host access |
 | --- | --- | --- | --- |
-| edge-gateway | `GET /`, `GET /health` only | HTTP configuration | `API_PORT` (default 3000); no domain forwarding |
+| edge-gateway | `GET /`, `GET /health`, and every route below forwarded to its service | The four `*_SERVICE_URL` | `API_PORT` (default 3000) |
 | clinics-service | `/health`, RF1 `/clinics`, RF3 `/services`, RF4 `/specialties`, `/clinic/time-zone` | clinics DB, Keycloak; users for RF1 | Private network only |
 | users-service | `/health`, RF2 `/users`, RF4 `/professionals`, RF14 `/patients` | users DB, Keycloak Admin API, clinics | Private network only |
 | appointments-service | `/health`, RF4 assignments, RF5-RF13, RF15-RF16, RF20-RF21 below | appointments DB, clinics, users, Keycloak; optional Redis cache/agenda relay | Private network only |
-| audit-service | `/health`, RF19 `/audit/logs` | logs DB, Keycloak | Private network only |
+| audit-service | `/health`, RF19 `/audit/logs`, and the RF18 audit relay in the background | logs DB, Keycloak; appointments and users DBs for the relay | Private network only |
 
 Compose now starts all five HTTP services, four PostgreSQL 18 databases, Keycloak,
-its user seed and Redis. For direct host access use the local port override in the
-[README](../README.md#local-startup); do not send domain requests to the gateway.
+its user seed and Redis. Send domain requests to the gateway. It picks the service by path: a professional's
+`/working-hours` and `/blocks` and a patient's `/appointments` go to appointments-service,
+the other `/professionals` and `/patients` routes to users-service. It strips hop-by-hop
+headers and `x-test-context`, adds `X-Forwarded-*`, and answers 502
+`upstream_unavailable`, 504 `upstream_timeout` or 503 `upstream_not_configured` when it
+cannot reach a service. The local port override in the
+[README](../README.md#local-startup) is only for calling a service directly.
 
 **appointments-service dependencies.** Booking, availability and schedules call
 other services with the caller's Bearer token, before any transaction opens:
@@ -343,8 +349,8 @@ transaction. If the event cannot be stored, the request fails and the note is
 neither written nor returned. Rejected requests (403, 404, 409, 422) record nothing.
 The event payload is
 `{ appUserId, patientId, action: "create"|"read"|"update", resource: "clinical_note", resourceId, occurredAt }`;
-it never contains the note text. Copying the events into `audit_log` in
-`logs_db` is the relay's job (card N10), which is not implemented yet.
+it never contains the note text. The audit relay in audit-service copies each event
+into `audit_log` in `logs_db` within about a second (see [RF18 delivery](#rf18-delivery-audit-service)).
 
 ## Patients (users-service, RF14 partial)
 
@@ -365,8 +371,8 @@ within the clinic; 422 invalid_request for invalid/empty input; 503 audit_unavai
 if contact auditing cannot queue (the patient write rolls back).
 The membership response contains only patientId, without contact or other personal fields.
 
-Contact writes atomically queue AuditRecorded in users_db.outbox; delivery to logs_db
-remains pending N10. No contact-reading route is exposed.
+Contact writes atomically queue AuditRecorded in users_db.outbox; the audit relay
+delivers them to logs_db. No contact-reading route is exposed.
 
 ## Patient history (appointments-service, RF16)
 
@@ -454,8 +460,18 @@ a single bound is allowed. No matches returns 200 `[]`.
 
 403 `forbidden` for receptionist, professional or platform roles;
 422 `invalid_request` for invalid or extra filters. User/patient existence is not
-checked in other services. There is no audit POST, PUT or DELETE route; reading
-events does not demonstrate RF18 production.
+checked in other services. There is no audit POST, PUT or DELETE route.
+
+### RF18 delivery (audit-service)
+
+No HTTP route: audit-service runs a relay every second that claims the pending
+`AuditRecorded` events of the `outbox` in `appointments_db` (clinical notes) and
+`users_db` (patient contact) as `medicitas_relay`, with `FOR UPDATE SKIP LOCKED`.
+It inserts them into `audit_log` with `audit_log_id = event_id` and
+`ON CONFLICT DO NOTHING`, as `medicitas_app` with each event's clinic in context, and
+then marks them published. If `logs_db` is down the events wait; if the relay dies
+after inserting, the next pass cannot duplicate them. A malformed event is logged and
+left pending without blocking the others. `AgendaChanged` events are not touched.
 
 ## Shared errors
 
@@ -492,8 +508,5 @@ seeded users in Keycloak for fresh tokens; never put real tokens or secrets in G
 
 Cross-checked against current routes, composition roots and existing tests; this
 contract does not claim a complete demo run. Coverage details belong to J7.
-Pending implementation: gateway proxy; RF18 audit delivery from users/appointments
-outboxes into `logs_db` (N10); patient contact reads. The implemented Redis agenda
-relay repairs cache invalidations; it is not the audit relay. Reading seeded audit
-rows does not prove delivery of newly produced events. Full-stack demo validation
+Pending implementation: patient contact reads (only writes are audited today). Full-stack demo validation
 and the automated concurrency proof remain separate from this request walkthrough.
